@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1d6fb0">
+  <meta name="description" content="Sole Blessed — a turn-based board game RPG in the browser. Four heroes race to earn the King's Blessing.">
+  <title>Sole Blessed</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='52' height='52' rx='14' fill='%23f59a3c' stroke='%238a4b12' stroke-width='5'/%3E%3Cpath d='M32 14l5 11 12 1-9 8 3 12-11-6-11 6 3-12-9-8 12-1z' fill='%23fff4dc'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-scene="title">
+  <canvas id="stage"></canvas>
+
+  <section id="screen-title" class="screen"></section>
+  <section id="screen-create" class="screen"></section>
+  <section id="screen-results" class="screen"></section>
+
+  <div id="hud"></div>
+  <div id="move-hud"></div>
+  <div id="battle-hud"></div>
+  <div id="dice-layer"></div>
+  <div id="banner"></div>
+  <div id="turn-label"></div>
+
+  <div id="dialogue">
+    <img id="dlg-portrait" alt="">
+    <div class="dlg-box">
+      <div id="dlg-name"></div>
+      <div id="dlg-text"></div>
+      <div class="dlg-hint"><kbd>Enter</kbd> / tap ▶</div>
+    </div>
+    <button id="dlg-skip" class="btn small dlg-skip" type="button"><kbd>Esc</kbd><span class="lbl">Skip</span></button>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <noscript><p style="padding:2rem;font:600 1.2rem sans-serif">Sole Blessed needs JavaScript to run.</p></noscript>
+
+  <script src="js/util.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/bot.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
