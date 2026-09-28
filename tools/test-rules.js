@@ -120,7 +120,7 @@ function wolfBattle(p) {
     p.spaceId = '1-L01';
     eq('Class change works at the Royal Castle', Game.changeClass(p, 'warlord'), true);
   }
-  /* ---- KO & give up: 2 turns down (spec §6) ---- */
+  /* ---- KO & give up: 1 turn down; the minion still takes 2 days to return (spec §6, §9) ---- */
   {
     const p = fresh(); Game.state.phase = 'between';
     p.money = 1000; p.spaceId = '1-e03'; Game.state.head.holder = p.id;
@@ -128,12 +128,28 @@ function wolfBattle(p) {
     eq('KO loses 10% money', p.money, 900);
     eq('KO by enemy drops the head on the space', Game.state.head, { holder: null, space: '1-e03' });
     eq('KO respawns at respawn point', p.spaceId, '1-L01');
-    eq('KO rests for 2 turns', [p.down, p.downReason], [2, 'ko']);
-    await Game.playTurn(); eq('rest turn 1 is skipped', p.down, 1);
-    await Game.playTurn(); eq('rest turn 2 is skipped', p.down, 0);
+    eq('KO rests for 1 turn', [p.down, p.downReason], [1, 'ko']);
+    await Game.playTurn(); eq('the rest turn is skipped, then the hero is back', [p.down, p.downReason], [0, null]);
     const q = fresh(); Game.giveUp(q);
-    eq('Give up rests for 2 turns', [q.down, q.downReason], [2, 'giveup']);
+    eq('Give up rests for 1 turn', [q.down, q.downReason], [1, 'giveup']);
     eq('Resting heroes cannot be challenged', Game.canBeChallenged(q), false);
+    eq('Minion respawns 2 days after a defeat', DATA.MINION_RESPAWN_DAYS, 2);
+  }
+  /* ---- no items during a fight, first round or later (spec §6, §8.2) ---- */
+  {
+    const p = fresh(); Game.state.phase = 'preRoll';
+    p.items = ['I04', 'I06']; p.hp = 10;
+    eq('Items work before rolling', Game.canUseItem(p, 'I04').ok, true);
+    const b = Battle.create('monster', '1-e03', null, { key: 'slime', mult: 1, e04: false, hp: 40, maxHp: 40, specialDay: 0 });
+    Battle.addPart(b, p, 'hero');
+    Game.state.phase = 'battle';
+    eq('Healing is refused while locked in a fight', Game.canUseItem(p, 'I04').ok, false);
+    Game.state.phase = 'preRoll';
+    eq('Refused even in the pre-roll phase while a fight is unfinished', Game.canUseItem(p, 'I06').ok, false);
+    Battle.removePart(b, p);
+    p.battleId = null;
+    await Game.useItem(p, 'items', 1);
+    eq('Energy Drink waits for the next fight', p.buffs.energy, true);
   }
   /* ---- no fights inside buildings; minion never stops on a building (spec §6, §9) ---- */
   {

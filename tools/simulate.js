@@ -52,7 +52,7 @@ function check(s, where) {
 }
 
 (async () => {
-  const endings = {}, dlDay = [], genDays = { B01: [], B02: [], B03: [] }, curve = { 30: [], 60: [], 90: [], 120: [] }, endDay = [], reqs = [];
+  const endings = {}, dlDay = [], dlMet = [], dlLeft = [], genDays = { B01: [], B02: [], B03: [] }, curve = { 30: [], 60: [], 90: [], 120: [] }, endDay = [], reqs = [];
   let levels = [], stars = [], deaths = 0, turns = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
@@ -66,6 +66,7 @@ function check(s, where) {
       check(Game.state, `after turn of ${Game.cur().name}`);
       for (const k of ['B01', 'B02', 'B03']) if (Game.state.army[k].defeated && !seen[k]) { seen[k] = 1; genDays[k].push(Game.state.day); }
       if (Game.state.dlDefeated && !seen.dl) { seen.dl = 1; dlDay.push(Game.state.day); }
+      if (!seen.dlMet && Game.state.battles.some(b => b.armyKey === 'B04')) { seen.dlMet = 1; dlMet.push(Game.state.day); }
       for (const d of [30, 60, 90, 120]) if (Game.state.day === d && !seen['d' + d]) {
         seen['d' + d] = 1;
         curve[d].push(Math.max(...Game.state.players.map(p => p.level)));
@@ -75,6 +76,7 @@ function check(s, where) {
     Game.playTurn = orig;
     endings[s.ending] = (endings[s.ending] || 0) + 1;
     endDay.push(s.day); reqs.push(s.requestsDone);
+    if (!s.dlDefeated && seen.dlMet) dlLeft.push(100 * s.army.B04.hp / s.army.B04.maxHp);
     for (const p of s.players) { levels.push(p.level); stars.push(p.stars); deaths += p.record.deaths; }
     if (verbose) {
       console.log(`Game ${g + 1}: ${s.ending} on day ${s.day} — ` + Game.ranking().map(p => `${p.name} Lv${p.level} ${p.stars}⭐ ${p.money}G ${DATA.CLASSES[p.classId].short}`).join(' | '));
@@ -84,7 +86,7 @@ function check(s, where) {
   console.log(`\n${games} games, ${turns} turns, ${((Date.now() - t0) / 1000).toFixed(1)}s — all invariants held.`);
   console.log('Endings:', endings);
   console.log(`General defeated on day — B01: ${avg(genDays.B01)} (${genDays.B01.length}/${games}), B02: ${avg(genDays.B02)} (${genDays.B02.length}/${games}), B03: ${avg(genDays.B03)} (${genDays.B03.length}/${games})`);
-  console.log(`Demon Lord defeated: ${dlDay.length}/${games} games, avg day ${avg(dlDay)}`);
+  console.log(`Demon Lord defeated: ${dlDay.length}/${games} games, avg day ${avg(dlDay)}; first engaged in ${dlMet.length}/${games} games, avg day ${avg(dlMet)}; HP left when it survived an engagement: ${dlLeft.length ? avg(dlLeft) + "%" : "—"}`);
   console.log(`Top hero level on day 30: ${avg(curve[30])}, day 60: ${avg(curve[60])}, day 90: ${avg(curve[90])}, day 120: ${avg(curve[120])}`);
   console.log(`Game ended on day ${avg(endDay)} on average; King's Requests completed per game ${avg(reqs)}`);
   console.log(`Final level avg ${avg(levels)} (max ${Math.max(...levels)}), stars avg ${avg(stars)}, KOs per hero per game ${(deaths / games / 4).toFixed(1)}`);

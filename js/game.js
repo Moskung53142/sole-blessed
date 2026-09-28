@@ -200,7 +200,7 @@ const Game = {
     if (p.isBot && this.skipping && !this.sim) { this.skipping = false; await UI.turnSummary(p, this.turnLog); }
     this.skipping = false;
   },
-  /* Knocked out or gave up: this turn is skipped (spec §6: 2 days to resurrect / stand up). */
+  /* Knocked out or gave up: this turn is skipped (spec §6: DATA.DOWN_TURNS turns to resurrect / stand up). */
   async restTurn(p) {
     p.down--;
     const left = p.down;
@@ -672,23 +672,19 @@ const Game = {
     return amt;
   },
 
-  /* Item/spellbook use: once per turn — before rolling, or inside the battle screen (heal/energy only). */
-  canUseItem(p, id, inBattle) {
+  /* Item/spellbook use: once per turn, before rolling. Never during a fight (spec §6, §8.2). */
+  canUseItem(p, id) {
     const s = this.state, it = DATA.ITEMS[id];
-    if (this.cur() !== p && !inBattle) return { ok: false, reason: 'Items can only be used on your own turn.' };
-    if (!inBattle && s.phase !== 'preRoll') return { ok: false, reason: 'Items can only be used before rolling.' };
+    if (p.battleId) return { ok: false, reason: 'Items cannot be used during a fight.' };
+    if (this.cur() !== p) return { ok: false, reason: 'Items can only be used on your own turn.' };
+    if (s.phase !== 'preRoll') return { ok: false, reason: 'Items can only be used before rolling.' };
     if (p.itemUsed) return { ok: false, reason: 'You already used an item this turn.' };
-    if (inBattle && it.fx !== 'heal' && it.fx !== 'energy') return { ok: false, reason: 'Only healing items and Energy Drinks work in battle.' };
     switch (it.fx) {
       case 'talisman': return { ok: false, reason: 'The talisman activates automatically when a spellbook targets you.' };
       case 'quest': return { ok: false, reason: 'Bring it to the Royal Castle.' };
       case 'heal': return p.hp >= this.maxHp(p) ? { ok: false, reason: 'Your HP is already full.' } : { ok: true };
       case 'dice': return p.buffs.dice ? { ok: false, reason: 'A dice bonus is already active.' } : { ok: true };
-      case 'energy': {
-        const b = inBattle && this.battleOf(p);
-        const active = b ? b.mods[p.id] && b.mods[p.id].energy : p.buffs.energy;
-        return active ? { ok: false, reason: 'Energy Drink is already active.' } : { ok: true };
-      }
+      case 'energy': return p.buffs.energy ? { ok: false, reason: 'Energy Drink is already active.' } : { ok: true };
       case 'home':
         if (s.head.holder === p.id) return { ok: false, reason: "Cannot warp while holding the Demon Lord's Head." };
         return p.spaceId === p.respawnId ? { ok: false, reason: 'You are already at your respawn point.' } : { ok: true };
@@ -718,10 +714,10 @@ const Game = {
     Sound.play('block');
     return true;
   },
-  async useItem(p, tab, idx, inBattle) {
+  async useItem(p, tab, idx) {
     const list = p[tab], id = list[idx];
     if (!id) return false;
-    const chk = this.canUseItem(p, id, inBattle);
+    const chk = this.canUseItem(p, id);
     if (!chk.ok) { if (!p.isBot && !this.sim) UI.toast(chk.reason, 'bad'); return false; }
     const it = DATA.ITEMS[id], w = this.who(p);
     const consume = () => { list.splice(list.indexOf(id), 1); p.itemUsed = true; };
@@ -731,14 +727,14 @@ const Game = {
         const h = U.round(this.maxHp(p) * it.heal * (eater ? 1.5 : 1));
         consume();
         p.hp = Math.min(this.maxHp(p), p.hp + h);
-        if (eater) this.buff(p, 'eater');
+        if (eater) p.buffs.eater = true;
         Sound.play('heal');
         this.log(`${it.icon} ${p.name} used ${it.name}: +${h} HP${eater ? ' and feels mighty (AT +40%)!' : '.'}`, p);
         if (id === 'I01' && !p.usedLarb) { p.usedLarb = true; this.unlock(p, 'isan'); }
         break;
       }
       case 'dice': consume(); p.buffs.dice = it.dice; this.log(`${it.icon} ${p.name} used ${it.name}: +${it.dice} dice next roll.`, p); Sound.play('dice'); break;
-      case 'energy': consume(); this.buff(p, 'energy'); this.log(`${it.icon} ${p.name} drank an Energy Drink (AT +20%).`, p); Sound.play('select'); break;
+      case 'energy': consume(); p.buffs.energy = true; this.log(`${it.icon} ${p.name} drank an Energy Drink (AT +20%).`, p); Sound.play('select'); break;
       case 'home': {
         consume();
         const from = p.spaceId;
@@ -785,11 +781,6 @@ const Game = {
     return true;
   },
   /* Energy Drink / Isan Person buffs last for the current battle, or the next one. */
-  buff(p, key) {
-    const b = this.battleOf(p);
-    if (b && b.mods[p.id]) b.mods[p.id][key] = true; else p.buffs[key] = true;
-  },
-
   /* ================================================================ shops */
   shopStock(kind, zone) {
     if (kind === 'item') return DATA.SHOP_ITEMS[zone].slice();
@@ -836,7 +827,7 @@ const Game = {
 
   /* ================================================================ defeat */
   /* HP hit 0: back to the respawn point with full HP, lose 10% money (20% to the minion's Sticky
-   * Fingers), and skip the next 2 turns while resurrecting (spec §6). */
+   * Fingers), and skip the next DATA.DOWN_TURNS turns while resurrecting (spec §6). */
   knockOut(p, cause) {
     const s = this.state;
     const lost = U.round(p.money * (cause.minion ? 0.2 : 0.1));
@@ -852,10 +843,10 @@ const Game = {
     p.down = DATA.DOWN_TURNS; p.downReason = 'ko';
     if (this.cur() === p && (s.phase === 'preRoll' || s.phase === 'acting' || s.phase === 'battle')) p.turnOver = true;
     p.buffs.energy = false; p.buffs.eater = false;
-    this.log(`💫 ${p.name} was knocked out, lost ${lost} G, and will resurrect at ${MapSys.spaceName(MapSys.spaces[p.respawnId], s)} in ${DATA.DOWN_TURNS} turns.`, p);
+    this.log(`💫 ${p.name} was knocked out, lost ${lost} G, and will resurrect at ${MapSys.spaceName(MapSys.spaces[p.respawnId], s)} after ${U.plural(DATA.DOWN_TURNS, 'turn')}.`, p);
     return lost;
   },
-  /* Gave up: stays on the space with HP unchanged, needs 2 turns to stand up (spec §6). */
+  /* Gave up: stays on the space with HP unchanged, needs DATA.DOWN_TURNS turns to stand up (spec §6). */
   giveUp(p) {
     p.down = DATA.DOWN_TURNS; p.downReason = 'giveup';
     if (this.cur() === p) p.turnOver = true;

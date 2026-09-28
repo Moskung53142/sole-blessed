@@ -42,7 +42,7 @@ const cmd = (c, role) => {
   if (role === 'atk') return cm.classMove.ok ? 'classMove' : cm.special.ok ? 'special' : (U.chance(0.6) ? 'attack' : 'strike');
   return U.weighted([['defend', 50], ['counter', 30]].concat(cm.specialDef.ok ? [['specialDef', 20]] : []));
 };
-/* Fight to the finish (max 12 days, no healing between days). */
+/* Fight to the finish (max 12 days, no healing: items are not allowed during a fight). */
 function fight(p, kind, key) {
   const s = Game.state;
   s.day = 1; p.hp = Game.maxHp(p); p.cd = { special: 0, specialDef: 0, classMove: 0 };
@@ -51,10 +51,9 @@ function fight(p, kind, key) {
   else if (key === 'minion') { s.minion = { zone: kind, spaceId: '1-e01', hp: DATA.MINION.hp[kind - 1], maxHp: DATA.MINION.hp[kind - 1], cd: { special: 0, specialDef: 0 } }; b = Battle.create('army', '1-e01', 'minion', null); }
   else { const a = DATA.ARMY[key]; s.army[key] = { hp: a.hp, maxHp: a.hp, cd: { special: 0, specialDef: 0 }, defeated: false }; b = Battle.create('army', '1-e01', key, null); }
   Battle.addPart(b, p, U.chance(0.5) ? 'hero' : 'enemy');
-  let potions = 2;                                   // bots carry heals and drink one at day start below 40% HP
+  // No items during a fight (spec §6): the hero starts at full HP and cannot heal until it ends.
   for (let day = 1; day <= 12; day++) {
     s.day = day;
-    if (day > 1 && potions && p.hp < Game.maxHp(p) * 0.4) { potions--; p.hp = Math.min(Game.maxHp(p), p.hp + U.round(Game.maxHp(p) * 0.5)); }
     for (let r = 0; r < 3; r++) {
       for (const side of b.first[p.id] === 'hero' ? ['H', 'E'] : ['E', 'H']) {
         const H = Battle.heroC(b, p), E = Battle.enemyC(b);

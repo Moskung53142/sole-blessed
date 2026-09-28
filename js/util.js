@@ -27,6 +27,8 @@ const U = {
   easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; },
   sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
   fmt(n) { return Math.round(n).toLocaleString('en-US'); },
+  /** "1 turn" / "2 turns" */
+  plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; },
   clone(o) { return JSON.parse(JSON.stringify(o)); },
   esc(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

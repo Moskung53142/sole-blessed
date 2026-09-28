@@ -517,7 +517,6 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
 .modal.place-menu .modal-btns { flex-direction: column; align-items: stretch; padding: 4px 24px 16px; }
 .pose-line { font-weight: 800; font-style: italic; color: #c0501a; margin: 0 0 6px; }
 .share-row { display: flex; justify-content: center; flex-wrap: wrap; }
-.bh-item { position: absolute; top: 194px; left: calc(50% + 70px); }
 .bh-info { left: calc(50% - 40px); }
 /* Adventure log: a clipboard in the middle of the screen */
 .modal.ledger { width: min(600px, 100%); background: none; border: 0; box-shadow: none; }
@@ -543,5 +542,4 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
   #hud-active .hpbar span { line-height: 10px; font-size: .62rem; }
   #hud-request { top: 118px; left: 8px; right: 8px; font-size: .74rem; }
   #hud-bl { top: 164px; }
-  .bh-item { top: 170px; left: auto; right: 8px; }
 }

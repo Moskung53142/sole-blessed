@@ -2,6 +2,9 @@
 > classes change only at the Royal Castle / Temples · 3-round duels that continue until someone is knocked out or gives up · forced battle
 > screen · no fights inside buildings · walking into a fight is not optional · 2 turns to resurrect / stand up · rebalanced items, equipment
 > (8 tiers) and enemies (3 monsters per zone) · Log ledger · game speed 1×/2×/4× · King's Requests · victory poses · shareable results.
+>
+> **Revision 2.1 (2026-09-29).** 1 turn to resurrect / stand up (the minion still returns after 2 days) · no items during a fight, in any round
+> (heal before you roll) · Sand Scorpion General and Demon Lord retuned for fights without healing.
 
 ### 0. General Requirements
 
@@ -22,7 +25,7 @@ Controls
 | --- | --- |
 | Normal play screen | Q Move, O Inventory, I Free Camera, X Status, L Log, Z How to Play |
 | While moving | W/A/S/D Move (walk every step), E Free Camera, I Auto-Move, O Status, N Full Map, Enter confirm Auto-Move |
-| Battle | W/A/S/D Select command (up/left/down/right), O Use item, Z Enemy Info |
+| Battle | W/A/S/D Select command (up/left/down/right), Z Enemy Info (no items during a fight) |
 | Menu | W/A/S/D Select, Enter Confirm |
 | All situations | ESC closes a window; if no window is open, it opens the Pause Menu |
 
@@ -43,7 +46,8 @@ Opened from the Start screen = Load/Delete; opened from the Pause Menu = Save (o
 the one with the most outstanding achievements will receive the "King's Blessing" and may ask for one thing.
 - 4 players (1 user + 3 bots) play in order, one turn each. All 4 turns = 1 day.
 - Game length (chosen on character creation): **140 days** (default) or **Endless** (no day limit; the game ends when the Demon Lord's Head is delivered).
-Simulated 4-bot games (80 games, 140 days): Generals fall around days 32 / 66 / 100; the Demon Lord falls in ≈40% of bot-only games, around day 121.
+Simulated 4-bot games (160 games, 140 days): Generals fall around days 32 / 68 / 104; the Demon Lord falls in ≈45% of bot-only games, around day 128.
+Endless games reach the Demon Lord's defeat around day 149.
 - Before the Demon Lord is defeated, all heroes roll 1 die each turn (the minion still rolls 1 die). After the Demon Lord is defeated, all heroes roll 2 dice each turn.
 - The game has 3 endings
     - **Good Ending:** If the players successfully bring the Dark Lord's head to the royal palace, they are considered victorious, leading to the Good Ending.
@@ -107,10 +111,10 @@ Displayed values include equipment and charms. Decimals are rounded to the neare
 - EXP gained = enemy EXP × (1 + 0.1 × (enemy level − player level)), with the multiplier capped at 0.5–2.
 - On level-up: HP +10, class-based stats, mastery bonuses for every mastered class,
 2 free points (1 point = HP +5 or AT/DF/SP +1), and **HP is fully restored**. The "Level Up!" window allows points to be assigned.
-- When HP reaches 0 (knocked out): return to the respawn point with full HP, lose 10% of money, and **skip the next 2 turns while resurrecting** (🪦 on the map).
+- When HP reaches 0 (knocked out): return to the respawn point with full HP, lose 10% of money, and **skip the next turn while resurrecting** (🪦 on the map).
 The initial respawn point is the Royal Castle. It can be reset at a temple or the Royal Castle
 (one respawn point at a time; shown as a colored flag on the map).
-- Giving up: HP unchanged, stay on the same space, and **skip the next 2 turns while standing up** (😵). Resting heroes cannot be challenged or ambushed.
+- Giving up: HP unchanged, stay on the same space, and **skip the next turn while standing up** (😵). Resting heroes cannot be challenged or ambushed.
 - For the holder of the Demon Lord's Head who loses:
     - Loses to another hero (including surrender): the head immediately moves to the winner.
     - HP reaches 0 from a monster or Demon Lord Army: the head drops on that space
@@ -136,7 +140,7 @@ At 10, the class is mastered: gain its mastery bonus on every level-up for the r
 | Loquacious Archmage | Master Apprentice Shaman | HP+10 SP+2 | SP+1 | Loose Tongue: At the end of your turn, 50% chance to reduce the cooldown of a Special/Class move by 1 day | You B#!$!: SP ×4.5 (CD 2) | Won't stop talking about it 💬 |
 | Slingshot Lad | Starting class | AT+2 SP+1 | AT+1 | Keen Eyes: Attack/Strike has a 20% chance to critically hit for ×1.5 | Rubber Band Shot: Base ×1.5 + SP (CD 2) | Pings a pebble at the sun ⭐ |
 | Cross-eyed Bow Warlord | Master Slingshot Lad | AT+2 SP+1 | AT+1 | Cross-eyed: Attack/Strike has a 30% chance to critically hit for ×2, with a 10% chance to miss | Wild Arrow Barrage: 3 arrows, each dealing (Base + SP) ×0.7; calculate Passive separately (CD 2) | Fires a victory arrow in a random direction 🏹 |
-| Isan Person | Use Larb for the first time | HP+10 AT+2 | AT+1 | Adventurous Eater: HP-restoring items are 50% more effective, and using one grants AT +40% for the current or next battle | Spicy Sizzle: AT ×3.5 and restore HP equal to 50% of damage dealt (CD 2) | Celebrates with sticky rice 🍙 |
+| Isan Person | Use Larb for the first time | HP+10 AT+2 | AT+1 | Adventurous Eater: HP-restoring items are 50% more effective, and using one grants AT +40% for the next battle | Spicy Sizzle: AT ×3.5 and restore HP equal to 50% of damage dealt (CD 2) | Celebrates with sticky rice 🍙 |
 | Gambler | Go All-in at the horse-racing track (win or lose) | HP+10 AT+1 SP+1 | HP+5 | Lucky: When HP reaches 0, 50% chance to revive with 20% HP | All-In: 50% chance to succeed and deal SP ×2, then roll again; up to 5 times (CD 1) | Catches a jackpot of coins 🪙 |
 | Temple Kid | Make merit 3 times | HP+10 AT+1 DF+1 | DF+1 | Blessed Merit: At the start of a new day, restore 10% HP | Alms Round: (50% of opponent's AT + 50% of opponent's SP) (CD 3) | Bows with a respectful wai 🙏 |
 - Class Change screen: 9 cards (3 main branches in rows, Tier 1 → 2, plus 1 off-branch row)
@@ -152,9 +156,9 @@ Details and the "Change to This Class" button (confirmation required) appear on 
 - Up to 3 rounds per turn against monsters, the Demon Lord Army **and other heroes**. If unfinished, the fight continues on that hero's next turn
 (HP persists, the player remains on the same space, and cross-day battles keep the same order).
 - **Forced battle screen:** a hero locked in an unfinished fight goes straight to the battle screen at the start of their turn (no Move/Inventory menu).
-The once-per-turn item can be used from inside the battle screen (O Item: healing items and Energy Drink only; it does not cost your command).
-- Intended duration (hero at the enemy's tier, solo): monsters ~1.3 days (mostly 1), minions ~1.8 days, Generals ~2.5 days,
-Demon Lord ~4 days when fought alone. Duels continue until someone is knocked out or gives up (no draws).
+- **No items during a fight**, in the first round or any later one: HP carries over between turns until the fight ends, so heal before rolling.
+- Intended duration (hero at the enemy's tier, solo, no healing): monsters ~1.3 days (mostly 1), minions ~1.7 days, Generals ~2 days,
+Demon Lord ~3 days; a lone hero beats a General or the Demon Lord about half the time, so team up. Duels continue until someone is knocked out or gives up (no draws).
 - If the player loses or surrenders: a monster disappears (unless another hero is still fighting it); the Demon Lord Army remains in place with its lost HP preserved.
 - **No fighting inside buildings** (Royal Castle, shops, temple, Larb shop, horse track): heroes there cannot be challenged, and the minion never stops on a building.
 
@@ -173,7 +177,7 @@ Demon Lord ~4 days when fought alone. Duels continue until someone is knocked ou
 | Strike | Defender takes ×2 | Counter succeeds; attacker takes defender's base damage ×1.5 |
 - Special/Class moves are not reduced by Defend/Counter. Special Defense that does not cover that attack = ×1 damage.
 - Cooldowns are counted in days and decrease by 1 at the end of the day, including the day used (CD 2 used on day 5 → available on day 7).
-- Give Up: counts as a loss but does not kill the player; HP remains unchanged, the player stays on the same space and rests for 2 turns.
+- Give Up: counts as a loss but does not kill the player; HP remains unchanged, the player stays on the same space and rests for 1 turn.
 Surrendering to an enemy loses 10% of money; surrendering to another hero grants the same reward as a win.
 
 6.3 Heroes Fighting Each Other (duels)
@@ -202,7 +206,7 @@ Demon Lord Army fights are co-operative: after the army enemy falls, allies part
 - Zone-based background; player on the left, enemy on the right, allies in the back row on the left with compact HP bars
 - Top: gold circular level badge, numeric HP bar, name labels for both sides, a burst-star "VS" in the center
 and a "Round 2 / 3" counter. HP bars slide down and turn red below 25%.
-- Center: AT, DF, SP comparison bars (player left, enemy right), a "Z Info" button to view enemy moves, and an "O Item" button on your turn.
+- Center: AT, DF, SP comparison bars (player left, enemy right), and a "Z Info" button to view enemy moves.
 - Starting cards appear below the characters; select with A/D and flip simultaneously.
 - "Attacker" label in red / "Defender" label in blue. Four diamond-shaped command buttons
 Enemy buttons are dark gray; cooldown buttons show days remaining. After selection, show "Waiting for opponent…"
@@ -346,7 +350,7 @@ e33──e34──e35──e36       e37  e38──L02──e39──e40
 8.2 Inventory (opened/closed with O)
 
 - 2 tabs, 6 slots per page (3 × 2 grid): Items and Spellbooks. Quest items are shown separately and do not use slots.
-- Use 1 item per turn: before rolling, or from the battle screen (healing items and Energy Drink; I07 activates automatically and does not count).
+- Use 1 item per turn, before rolling. Items cannot be used during a fight (I07 activates automatically and does not count).
 - When the inventory is full after obtaining a new item → choose to discard the old item or the new item. Items can be sold at shops for half price.
 - Spellbooks used on others can target anywhere on the map. If the target has I07, the effect is canceled and I07 is removed.
 - Item Shop stock: Zones 1–2 = I02, I03, I04, I05, I06, I07; Zones 3–4 = I02, I03, I05, I06, I07, I08.
@@ -358,7 +362,7 @@ e33──e34──e35──e36       e37  e38──L02──e39──e40
 | I03 | Triple Dice | Add 2 dice to the next roll | 250 |
 | I04 | Herbal Balm | Restore 30% HP | 80 |
 | I05 | Angelic Inhalant | Restore 70% HP | 200 |
-| I06 | Energy Drink | AT +20% in the current or next battle | 120 |
+| I06 | Energy Drink | AT +20% in the next battle | 120 |
 | I07 | Anti-Magic Talisman | Block 1 spellbook from another player | 150 |
 | I08 | Royal Elixir (new) | Restore 100% HP (Zones 3–4 shops, treasure, Sand Wyrm / Lava Golem drops) | 650 |
 | MB01 | Homecoming Tome (Zone 1) | Warp to the respawn point (cannot use while holding the Demon Lord's Head) | 100 |
@@ -417,8 +421,8 @@ Defend 50% / Counter 50% when defending.
 | Minion Zone 1/2/3/4 | 7/19/31/43 | 155/480/1050/1590 | 12/35/56/88 | 9/26/46/67 | 11/31/53/80 | 100/270/440/610 | 175/475/775/1075 | I05 50%, C04 10% |
 | Iron Fang General (Zone 1) | 12 | 460 | 21 | 20 | 22 | 400 | 700 | C01 100% |
 | Dark Dryad General (Zone 2) | 24 | 960 | 44 | 43 | 46 | 900 | 1600 | C02 100% |
-| Sand Scorpion General (Zone 3) | 36 | 1580 | 70 | 68 | 74 | 1500 | 3000 | C03 100% |
-| Demon Lord (Zone 4) | 50 | 4500 | 78 | 89 | 82 | 3000 | 8000 | IQ01 100% |
+| Sand Scorpion General (Zone 3) | 36 | 1400 | 62 | 68 | 65 | 1500 | 3000 | C03 100% |
+| Demon Lord (Zone 4) | 50 | 3600 | 66 | 89 | 70 | 3000 | 8000 | IQ01 100% |
 - Minion: Sticky Fingers (player loses an additional 10% money when defeated/surrendering) / Rock Throw, base ×1.5 (CD 2) / Sudden Dodge, −50% damage (CD 2)
 - Iron Fang General: Thick Hide (Strike −30%) / Earthquake, base ×1.5 + SP (CD 2) / Raise Shield, −40% damage (CD 2)
 - Dark Dryad General: Regenerative Roots (restore 5% HP at the start of the day) / Entangling Vines, SP ×2 and player's AT −20%
@@ -459,7 +463,7 @@ of damage received; changes color when changing form) / Hellfire, SP ×3 (CD 2)
 / enough money to buy better equipment → Equipment Shop / otherwise move toward the General of the uncleared zone (roaming for fights while under-levelled)
 - Challenge a hero on the same space when HP is higher (steal money after winning)
 Join a Demon Lord Army battle when HP > 50%. When walking into a fight: ambush a badly hurt hero, otherwise help against the enemy.
-- Use recovery items when HP < 40% (also from the battle screen). Use spellbooks on the hero with the most stars 50% of the time per turn.
+- Use recovery items before rolling when HP < 40% (< 75% when a General / the Demon Lord or an army battle is within 6 spaces). Use spellbooks on the hero with the most stars 50% of the time per turn.
 - Battle: use Class/Special moves as soon as off cooldown; otherwise attack with Attack 60% / Strike 40%
 Defend 50% / Counter 30% / Special Defense 20% when defending. Surrender to a Demon Lord Army when HP < 15% and in a duel when HP < 12%.
 - Assign free points to stats increased by the class. Promote at the first Royal Castle / Temple visit. Change to an off-branch class 50% of the time.

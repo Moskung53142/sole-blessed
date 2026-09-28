@@ -109,9 +109,9 @@ Space ids are `"<zone>-<code>"`, e.g. `1-L01` (Royal Castle), `4-B04` (Demon Lor
   "mastered": ["commoner"],           // mastery bonus applies on every level-up
   "unlocked": ["commoner", "shaman", "slingshot", "warlord"],
   "merit": 1, "usedLarb": false, "wentAllIn": false,          // secret-class unlock progress
-  "buffs": { "dice": 0, "energy": false, "eater": false },    // next roll / next battle
+  "buffs": { "dice": 0, "energy": false, "eater": false },    // next roll / next battle (items are never used during a fight)
   "battleId": null,                   // locked in a fight → id in state.battles
-  "down": 0, "downReason": null,      // turns left to skip after a KO ("ko") or giving up ("giveup")
+  "down": 0, "downReason": null,      // turns left to skip after a KO ("ko") or giving up ("giveup"); set to DATA.DOWN_TURNS = 1
   "itemUsed": false,                  // one item per turn
   "turnOver": false,                  // the turn was used up early (KO, Challenge Letter duel)
   "record": { "monsters": 14, "heroesBeaten": 1, "army": 1, "treasures": 3, "deaths": 1, "requests": 2 },

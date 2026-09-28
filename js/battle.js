@@ -288,7 +288,6 @@ const Battle = {
   async continueFor(p) {
     const b = Game.battleOf(p);
     if (!b) { p.battleId = null; return; }
-    if (Game.who(p).beforeBattle) await Game.who(p).beforeBattle(p, b);
     if (b.kind === 'duel') { await this.duelSession(b, p); return; }
     Game.log(`⚔️ ${p.name} continues the battle against the ${this.enemyDef(b).name}.`, p);
     await this.session(b, p, {});
@@ -340,7 +339,7 @@ const Battle = {
     this.active = true;
     try {
       const scene = () => this.sceneFor(b, p);
-      await V.open(scene, { humanInvolved: !p.isBot, hero: p });
+      await V.open(scene, { humanInvolved: !p.isBot });
       if (b.first[p.id] == null) b.first[p.id] = (await V.cards(!p.isBot)) ? 'hero' : 'enemy';
       const rounds = opts.rounds || DATA.ROUNDS_PER_DAY;
       let outcome = null;
@@ -382,12 +381,12 @@ const Battle = {
         lost = U.round(p.money * (minion ? 0.2 : 0.1));
         p.money -= lost;
         Game.giveUp(p);
-        Game.log(`🏳️ ${p.name} gave up against the ${d.name}, lost ${lost} G, and needs ${DATA.DOWN_TURNS} turns to stand up.`, p);
+        Game.log(`🏳️ ${p.name} gave up against the ${d.name}, lost ${lost} G, and needs ${U.plural(DATA.DOWN_TURNS, 'turn')} to stand up.`, p);
       }
       Sound.play('lose');
       const lines = [`−${lost} G${minion ? ' (Sticky Fingers!)' : ''}`];
-      if (outcome === 'lose') lines.push(`Resurrecting at ${MapSys.spaceName(MapSys.spaces[p.respawnId], Game.state)}: skip the next ${DATA.DOWN_TURNS} turns.`);
-      else lines.push(`HP unchanged. You stay here and need ${DATA.DOWN_TURNS} turns to stand up.`);
+      if (outcome === 'lose') lines.push(`Resurrecting at ${MapSys.spaceName(MapSys.spaces[p.respawnId], Game.state)}: skip ${DATA.DOWN_TURNS === 1 ? 'your next turn' : `the next ${DATA.DOWN_TURNS} turns`}.`);
+      else lines.push(`HP unchanged. You stay here and need ${U.plural(DATA.DOWN_TURNS, 'turn')} to stand up.`);
       if (b.kind === 'army' && d.live.hp > 0) lines.push(`The ${d.name} keeps its wounds (${d.live.hp}/${d.live.maxHp} HP).`);
       await V.result({ type: outcome, title: outcome === 'lose' ? 'Defeat…' : 'Surrendered', lines, p });
       return;
@@ -491,7 +490,7 @@ const Battle = {
         left: this.sceneHero(left, b), right: this.sceneHero(right, b), allies: [],
         leftCombatant: () => this.heroC(b, left), rightCombatant: () => this.heroC(b, right),
       });
-      await V.open(scene, { humanInvolved: !left.isBot, duel: true, hero: left });
+      await V.open(scene, { humanInvolved: !left.isBot, duel: true });
       if (b.firstId == null) b.firstId = (await V.cards(!left.isBot)) ? left.id : right.id;
       const first = Game.player(b.firstId), second = first === left ? right : left;
       for (let r = 1; r <= DATA.ROUNDS_PER_DAY && !result; r++) {
@@ -523,8 +522,8 @@ const Battle = {
       for (const id of b.parts.slice()) Game.player(id).battleId = null;
       b.parts = [];
       this.dispose(b);
-      if (died) { const lost = Game.knockOut(L, { by: 'hero', pid: W.id }); lines.push(`${L.name} is knocked out (−${lost} G) and resurrects in ${DATA.DOWN_TURNS} turns.`); }
-      else { Game.giveUp(L); lines.push(`${L.name} gave up and needs ${DATA.DOWN_TURNS} turns to stand up.`); Game.log(`🏳️ ${L.name} gave up the duel against ${W.name}.`, L); }
+      if (died) { const lost = Game.knockOut(L, { by: 'hero', pid: W.id }); lines.push(`${L.name} is knocked out (−${lost} G) and resurrects after ${U.plural(DATA.DOWN_TURNS, 'turn')}.`); }
+      else { Game.giveUp(L); lines.push(`${L.name} gave up and needs ${U.plural(DATA.DOWN_TURNS, 'turn')} to stand up.`); Game.log(`🏳️ ${L.name} gave up the duel against ${W.name}.`, L); }
       Game.log(`🏆 ${W.name} won the duel against ${L.name}!`, W);
       Game.track(W, 'duelWin');
       Sound.play(!W.isBot || L.isBot ? 'win' : 'lose');
@@ -591,7 +590,7 @@ const SimView = {
 
 /* ==================================================================== BattleView: canvas scene + DOM HUD */
 const BattleView = (() => {
-  let el = null, scene = null, isOpen = false, opts = {}, hero = null, pickingItem = false;
+  let el = null, scene = null, isOpen = false, opts = {};
   const fx = { lunge: {}, flash: {}, shake: null, floaters: [], particles: [], label: {} };
   const now = () => performance.now();
   const dur = ms => ms * Game.delayFactor();
@@ -614,7 +613,6 @@ const BattleView = (() => {
       <div class="bh-allies"></div>
       <div class="bh-stats"></div>
       <button class="btn small bh-info" data-key="Z"><kbd>Z</kbd> Info</button>
-      <button class="btn small bh-item hidden" data-key="O"><kbd>O</kbd> Item</button>
       <div class="bh-role L"></div><div class="bh-role R"></div>
       <div class="bh-label L"></div><div class="bh-label R"></div>
       <div class="bh-cmd L"></div><div class="bh-cmd R enemy"></div>
@@ -623,7 +621,6 @@ const BattleView = (() => {
       <div class="bh-cards"></div>
       <div class="bh-result"></div>`;
     $('.bh-info').onclick = () => showInfo();
-    $('.bh-item').onclick = () => itemMenu();
   }
   function sideData(side) { return side === 'L' ? getScene().left : getScene().right; }
   function refreshBars() {
@@ -804,27 +801,6 @@ const BattleView = (() => {
     c.restore();
   }
 
-  /* Spec §6 + §8.2: the battle screen is forced, so the once-per-turn item is used from here. */
-  function usableItems() {
-    if (!hero || hero.isBot || hero.itemUsed || Game.cur() !== hero || Game.state.phase === 'between') return [];
-    return hero.items.map((id, idx) => ({ id, idx })).filter(x => Game.canUseItem(hero, x.id, true).ok);
-  }
-  function refreshItemBtn() {
-    const b = $('.bh-item');
-    if (b) b.classList.toggle('hidden', !usableItems().length || !$('.bh-cmd.L.active'));
-  }
-  async function itemMenu() {
-    const list = usableItems();
-    if (!list.length || pickingItem) { if (!list.length) UI.toast('No usable item (healing items or Energy Drink, once per turn).', 'bad'); return; }
-    pickingItem = true;
-    const idx = await UI.choice('🎒 Use an item', `HP ${hero.hp}/${Game.maxHp(hero)}. Using an item does not cost your command.`,
-      list.map((x, i) => ({ label: `${DATA.ITEMS[x.id].icon} ${DATA.ITEMS[x.id].name} <small>${DATA.ITEMS[x.id].text}</small>`, key: String(i + 1), value: x.idx }))
-        .concat([{ label: 'Cancel', key: 'Esc', value: null }]), { escValue: null });
-    pickingItem = false;
-    if (idx == null) return;
-    await Game.useItem(hero, 'items', idx, true);
-    refreshBars(); refreshItemBtn();
-  }
   function setLabel(side, text, cls) {
     const l = $(`.bh-label.${side}`);
     l.textContent = text || '';
@@ -837,7 +813,6 @@ const BattleView = (() => {
     async open(sceneFn, o) {
       scene = sceneFn; lastScene = null; opts = o || {}; isOpen = true;
       fx.floaters = []; fx.particles = []; fx.lunge = {}; fx.flash = {}; fx.victory = null;
-      hero = (o && o.hero) || null;
       build();
       document.getElementById('toast-root').innerHTML = '';
       el.classList.add('show');
@@ -914,18 +889,15 @@ const BattleView = (() => {
           Sound.play('click'); res(c);
         };
         box.querySelectorAll('.dia').forEach(b => { b.onclick = () => tryPick(b.dataset.cmd); });
-        refreshItemBtn();
         UI.pushKeys(e => {
           const k = e.key.toUpperCase();
           const map = { W: 0, A: 1, D: 2, S: 3, ARROWUP: 0, ARROWLEFT: 1, ARROWRIGHT: 2, ARROWDOWN: 3 };
           if (k in map) { tryPick(ROLE_CMDS[role][map[k]]); return true; }
           if (k === 'Z') { showInfo(); return true; }
-          if (k === 'O') { itemMenu(); return true; }
           return false;
         }, 'cmd');
       });
       UI.popKeys('cmd');
-      $('.bh-item').classList.add('hidden');
       diamond(box, role, cmds, self, false);
       box.querySelector(`[data-cmd="${cmd}"]`).classList.add('picked');
       $('.bh-wait').classList.add('show');

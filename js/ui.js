@@ -650,6 +650,10 @@ const UI = (() => {
     if (!S.inGame || S.hud !== 'normal') return false;
     const cur = Game.state && Game.cur();
     if (!cur) return false;
+    if (k === 'L') { openLedger(); return true; }
+    if (cur.isBot && k === 'ENTER' && !Game.skipping) { Game.skipping = true; toast('⏩ Skipping ahead…'); return true; }
+    // The battle screen is forced: no inventory, status or ending the turn mid-fight (e.g. a Challenge Letter duel).
+    if (BattleView.isOpen) return false;
     if (MapSys.cam.mode === 'free') {
       const d = 60;
       if (k === 'W' || k === 'ARROWUP') { MapSys.pan(0, -d); return true; }
@@ -658,12 +662,7 @@ const UI = (() => {
       if (k === 'D' || k === 'ARROWRIGHT') { MapSys.pan(d, 0); return true; }
       if (k === 'ESCAPE' || k === 'I') { toggleFreeCam(); return true; }
     }
-    if (k === 'L') { openLedger(); return true; }
-    if (cur.isBot) {
-      if (k === 'ENTER' && !Game.skipping) { Game.skipping = true; toast('⏩ Skipping ahead…'); return true; }
-      return false;
-    }
-    if (!S.turn) return false;
+    if (cur.isBot || !S.turn) return false;
     const map = { Q: onQ, O: onO, I: toggleFreeCam, X: onX, Z: openHelp };
     if (map[k]) { Sound.play('click'); map[k](); return true; }
     return false;

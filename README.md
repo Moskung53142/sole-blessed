@@ -17,7 +17,7 @@ A turn-based **board game + RPG** for the browser, inspired by Dokapon Kingdom. 
 | --- | --- |
 | Normal play | Q Move · O Inventory · I Free Camera · X Status · L Log · Z How to Play |
 | While moving | W/A/S/D walk (every step) · E Free Camera · I Auto-Move · O Status · N Full Map |
-| Battle | W/A/S/D choose a command · O Item · Z Enemy Info |
+| Battle | W/A/S/D choose a command · Z Enemy Info (no items during a fight) |
 | Menus | W/A/S/D select · Enter confirm · Esc close / pause |
 
 ## Development

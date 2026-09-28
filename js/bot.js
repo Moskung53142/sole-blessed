@@ -12,7 +12,8 @@ const Bot = {
   /* ================================================================ pre-roll */
   async turnAction(p) {
     await this.think();
-    if (p.hp < Game.maxHp(p) * 0.4) {
+    // No items during a fight, so top up before rolling toward a boss.
+    if (p.hp < Game.maxHp(p) * (this.bossInReach(p) ? 0.75 : 0.4)) {
       const idx = this.healItem(p);
       if (idx >= 0) await Game.useItem(p, 'items', idx);
     }
@@ -28,11 +29,12 @@ const Bot = {
     }
     return { type: 'move' };
   },
-  /* Locked in a fight at turn start: patch up first (the battle screen opens right after). */
-  async beforeBattle(p) {
-    if (p.itemUsed || p.hp >= Game.maxHp(p) * 0.4) return;
-    const idx = this.healItem(p);
-    if (idx >= 0) await Game.useItem(p, 'items', idx, true);
+  /* An undefeated General / Demon Lord (or a co-op army fight) the bot would take on is within one roll. */
+  bossInReach(p) {
+    const s = Game.state, d = MapSys.distField(p.spaceId, x => this.blocking(x));
+    const reach = id => d[id] != null && d[id] <= 6;
+    return ['B01', 'B02', 'B03', 'B04'].some(k => !s.army[k].defeated && this.readyFor(p, k) && reach(this.spaceOf(k)))
+      || s.battles.some(b => b.kind === 'army' && b.armyKey !== 'minion' && reach(b.space));
   },
   healItem(p) {
     const order = this.hpPct(p) < 0.25 ? ['I08', 'I05', 'I01', 'I04'] : ['I04', 'I01', 'I05', 'I08'];

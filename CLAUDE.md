@@ -36,12 +36,12 @@ Run the first two after touching `game.js`, `battle.js`, `bot.js`, `map.js` or `
 ## Architecture rules
 
 - **One JSON state.** Everything that must survive a save is in `Game.state` (plain JSON). Static data never goes in state.
-- **Decision parity.** `Game.who(p)` returns `Bot` or `UI`; both implement the same async methods (`turnAction`, `chooseDestination(p, moves, total)`, `yesNo`, `chooseChallenge`, `fightChoice`, `placeMenu`, `chooseClass`, `battleCommand`, `allocatePoints`, `inventoryFull`, `charmChoice`, `stealChoice`, `shop`, `horseBet`, `pickTarget`, `pickSpace`). `beforeBattle` is optional (bots heal before a forced fight). Add a new decision to both.
+- **Decision parity.** `Game.who(p)` returns `Bot` or `UI`; both implement the same async methods (`turnAction`, `chooseDestination(p, moves, total)`, `yesNo`, `chooseChallenge`, `fightChoice`, `placeMenu`, `chooseClass`, `battleCommand`, `allocatePoints`, `inventoryFull`, `charmChoice`, `stealChoice`, `shop`, `horseBet`, `pickTarget`, `pickSpace`). Add a new decision to both.
 - **Headless-safe logic.** `game.js`/`battle.js`/`bot.js` must run in Node (`Game.sim = true`): guard every display call with `if (!this.sim)` / `Game.sim`, and route battle visuals through `Battle.view()` (returns `SimView` in sim).
 - **Timing.** Use `await Game.wait(ms)` in game flow. It applies the game speed setting (`UI.settings.speed`, 1/2/4), Enter-to-skip (`Game.skipping`), pause, and throws `ABORT` when the player exits to the title. Human decisions call `Game.needHuman()` to cancel skipping.
 - **Movement** uses `MapSys.exactMoves(prefix, steps, isBlocking)`: the rolled number must be walked exactly, no revisits, and stepping onto an undefeated General / Demon Lord's Castle ends the move. No route = turn skipped.
-- **Fights.** Battles are persistent objects (`kind` monster/army/duel). A locked hero goes straight into `Battle.continueFor` at turn start (no pre-roll menu); items are used from the battle HUD (`Game.useItem(..., inBattle)`). Duels run 3 rounds per duelist turn until KO/give-up. Walking into a fight calls `Game.enterFight` (join or duel; `reserve`/`resume` hand the monster fight to the duel winner).
-- **Rest turns.** KO and give-up set `p.down = 2`; `Game.playTurn` skips those turns (`restTurn`). Resting heroes can't be challenged or ambushed; heroes in buildings can't be challenged; the minion never ends on a building.
+- **Fights.** Battles are persistent objects (`kind` monster/army/duel). A locked hero goes straight into `Battle.continueFor` at turn start (no pre-roll menu). No items during a fight (`Game.canUseItem` refuses while `p.battleId` is set), and the HUD keys except L are ignored while `BattleView.isOpen`. Duels run 3 rounds per duelist turn until KO/give-up. Walking into a fight calls `Game.enterFight` (join or duel; `reserve`/`resume` hand the monster fight to the duel winner).
+- **Rest turns.** KO and give-up set `p.down = DATA.DOWN_TURNS` (1); `Game.playTurn` skips those turns (`restTurn`). Resting heroes can't be challenged or ambushed; heroes in buildings can't be challenged; the minion never ends on a building.
 - **Saving** is only legal in the human's pre-roll phase (`Game.canSave()`), so loading always resumes at `playTurn()` start. Keep that phase idempotent.
 - **Keyboard.** `UI.pushKeys(fn, tag, isModal)` stack; handlers return `true` when they consume a key. Modals swallow everything. `hud` and `title` handlers are permanent. Never remove them in cleanup.
 - **Battle scene data** is read live via a scene function; `BattleView.getScene()` caches the last good scene. Mutate world state after `V.result(...)`.
@@ -53,16 +53,16 @@ Run the first two after touching `game.js`, `battle.js`, `bot.js`, `map.js` or `
 2. Zone offsets (0,10) / (5,1) / (15,0) / (15,12) place the zones SW/NW/NE/SE with a sea strait (bridge) between Zones 2 and 3 and open sea between Zones 1 and 4.
 3. Monsters: 3 per zone; the tier comes from the space's depth between the zone entrance and its General (20% tier below, 12% tier above).
 4. After a monster falls with 2+ heroes in the fight, the finisher duels one remaining hero ("the fight still goes on"). Demon Lord Army fights stay co-operative.
-5. Isan Person's AT +40% and Energy Drink last for the current fight (if used in battle) or the next one.
-6. One item per turn covers items and spellbooks; in battle only heals and Energy Drink.
-7. Hero duel KO: loser pays the normal 10% KO penalty and rests 2 turns, then the winner steals. Stolen equipped gear sells the winner's old piece for 50%; charms are discarded.
+5. Isan Person's AT +40% and Energy Drink apply to the hero's next fight.
+6. One item per turn covers items and spellbooks, before rolling only; no items during a fight (any round).
+7. Hero duel KO: loser pays the normal 10% KO penalty and rests 1 turn, then the winner steals. Stolen equipped gear sells the winner's old piece for 50%; charms are discarded.
 8. Minion Sticky Fingers = 20% total money loss on KO/surrender.
 9. Challenge Letter: the caster rushes to the target's space and the duel starts immediately (uses up the turn).
 10. Extras: autosave row, lifetime records on the title, HUD unread badge on the Log button, turn summary after Enter-skip, D-pad on touch screens, bot schedule/co-op seeking (`Bot.SCHEDULE`) so the story advances.
 
 ## Balance notes (from `tools/simulate.js`, 4 bots, 140 days)
 
-- 80-game sample: Generals fall around days 32 / 66 / 100; the Demon Lord falls in ≈40% of bot-only games, around day 121. Endings with bots only: ≈24% Good / 15% Secret / 61% Bad (a human pushing the story does better). Endless always ends Good (≈ day 150).
-- Top bot level ≈ 12 / 24 / 35 / 44 on days 30 / 60 / 90 / 120, matching the zone bands 1–12 / 13–24 / 24–36 / 37–50.
-- Small samples (≤ 24 games) swing a lot (Demon Lord kill rate 25–60%); use 80+ games before judging a change.
+- 160-game sample (revision 2.1: no items in fights, 1 rest turn): Generals fall around days 32 / 68 / 104 (the third in ≈92% of games); the Demon Lord is engaged in ≈60% of games (around day 126) and falls in ≈45%, around day 128. Endings with bots only: ≈18% Good / 27% Secret / 55% Bad (a human pushing the story does better). Endless always ends Good (Demon Lord ≈ day 149).
+- Top bot level ≈ 12 / 24 / 34 / 43 on days 30 / 60 / 90 / 120, matching the zone bands 1–12 / 13–24 / 24–36 / 37–50.
+- Small samples (≤ 24 games) swing a lot (Demon Lord kill rate 25–75%); use 80+ games before judging a change. `simulate.js` also prints when the Demon Lord is first engaged and its HP left when it survives: few engagements = pacing/bot readiness, high HP left = boss too tough.
 - Monster EXP = 7.8 × level + 7, money = 9 × level + 12. Change pacing through these, `DATA.MINION` and the equipment prices, then re-run both tools.

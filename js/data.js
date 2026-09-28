@@ -13,7 +13,7 @@ const DATA = (() => {
   D.ROUNDS_PER_DAY = 3;
   D.MINION_FIRST_DAY = 3;
   D.MINION_RESPAWN_DAYS = 2;           // a defeated minion returns 2 days later
-  D.DOWN_TURNS = 2;                    // turns skipped after a KO (resurrection) or giving up (standing up)
+  D.DOWN_TURNS = 1;                    // turns skipped after a KO (resurrection) or giving up (standing up)
   D.INV_SIZE = 6;
   D.LOG_SIZE = 300;                    // entries kept in the adventure log
   D.CELL = 120;                        // px between spaces (world units)
@@ -220,9 +220,9 @@ const DATA = (() => {
       passive: 'thickHide', special: 'earthquake', specialDef: 'raiseShield', drops: [{ id: 'C01', chance: 1 }] },
     B02: { key: 'B02', name: 'Dark Dryad General', zone: 2, lv: 24, hp: 960, at: 44, df: 43, sp: 46, exp: 900, money: 1600, stars: 2,
       passive: 'regenRoots', special: 'vines', specialDef: 'hardBark', drops: [{ id: 'C02', chance: 1 }] },
-    B03: { key: 'B03', name: 'Sand Scorpion General', zone: 3, lv: 36, hp: 1580, at: 70, df: 68, sp: 74, exp: 1500, money: 3000, stars: 2,
+    B03: { key: 'B03', name: 'Sand Scorpion General', zone: 3, lv: 36, hp: 1400, at: 62, df: 68, sp: 65, exp: 1500, money: 3000, stars: 2,
       passive: 'poisonTail', special: 'ragingSandstorm', specialDef: 'burrow', drops: [{ id: 'C03', chance: 1 }] },
-    B04: { key: 'B04', name: 'Demon Lord', zone: 4, lv: 50, hp: 4500, at: 78, df: 89, sp: 82, exp: 3000, money: 8000, stars: 3,
+    B04: { key: 'B04', name: 'Demon Lord', zone: 4, lv: 50, hp: 3600, at: 66, df: 89, sp: 70, exp: 3000, money: 8000, stars: 3,
       passive: 'threeForms', special: 'hellfire', specialDef: 'darkVeil', drops: [{ id: 'IQ01', chance: 1 }] },
   };
   D.MINION = {
@@ -430,7 +430,7 @@ const DATA = (() => {
   D.KEYS = [
     ['Normal play', 'Q Move · O Inventory · I Free Camera · X Status · L Log · Z How to Play'],
     ['While moving', 'W/A/S/D walk one space (you must walk every step) · E Free Camera · I Auto-Move · O Status · N Full Map'],
-    ['Battle', 'W/A/S/D Select command · O Use item · Z Enemy Info · A/D + Enter pick a card'],
+    ['Battle', 'W/A/S/D Select command · Z Enemy Info · A/D + Enter pick a card (no items during a fight)'],
     ['Menus', 'W/A/S/D Select · Enter Confirm · number keys pick options'],
     ['Anywhere', 'ESC closes a window; with no window open it opens the Pause Menu'],
   ];
@@ -440,7 +440,7 @@ const DATA = (() => {
     ['Spaces', '🟨 Empty: 70% monster / 30% event · 🟩 Treasure · 🟪 General · ⬛ Demon Lord\'s Castle · 🟧 Towns (castle, shops, temple, Larb shop, horse track). Nobody fights inside a building.'],
     ['Battle', 'Pick a card to decide who attacks first. Each round both sides attack once, 3 rounds per turn. Attack vs Defend = ×0.5, vs Counter = ×1.5. Strike vs Defend = ×2, vs Counter = you get countered. Special and Class moves ignore Defend/Counter. Duels between heroes continue every turn until someone is knocked out or gives up. Walking into someone else\'s fight forces you to join it.'],
     ['Growth', 'Level up (max 50) for stats, 2 free points and a full heal. Master a class (10 Job EXP) to keep its bonus and unlock Tier 2. Change class at the Royal Castle or a Temple. Secret classes unlock by eating Larb, going all-in at the races, or making merit 3 times.'],
-    ['Setbacks', 'Knocked out: return to your respawn point and skip your next 2 turns. Give up: stay put and skip your next 2 turns.'],
+    ['Setbacks', 'Knocked out: return to your respawn point and skip your next turn. Give up: stay put and skip your next turn. Items cannot be used during a fight, so heal before you roll.'],
     ['King\'s Requests', 'Every week the King posts a request. The first hero to finish it earns +1 ⭐ and gold.'],
     ['Endings', "Bring the Demon Lord's Head to the Royal Castle for the Good Ending. Fail to defeat him in time: Bad Ending. Hold the head without delivering it… find out."],
   ];
