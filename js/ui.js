@@ -86,11 +86,61 @@ const UI = (() => {
     setTimeout(() => t.classList.add('out'), 2800);
     setTimeout(() => t.remove(), 3300);
   }
-  function logLine(text) {
-    const box = $('#hud-log');
-    if (!box) return;
-    box.append(h('div', { class: 'log-line' }, text));
-    while (box.children.length > 5) box.firstChild.remove();
+  /* New adventure-log entry: bump the unread badge on the Log button (or append to an open ledger). */
+  let unread = 0, ledgerAppend = null;
+  function logLine(entry) {
+    if (ledgerAppend) { ledgerAppend(entry); return; }
+    unread = Math.min(99, unread + 1);
+    const b = $('#hud-side [data-key="L"]');
+    if (!b) return;
+    let badge = b.querySelector('.badge');
+    if (!badge) { badge = h('i', { class: 'badge' }); b.append(badge); }
+    badge.textContent = unread;
+  }
+  function ledgerRow(e) {
+    const s = Game.state;
+    let img;
+    if (typeof e.who === 'number' && s.players[e.who]) img = Sprites.heroPortrait(s.players[e.who], 48);
+    else if (e.who === 'minion') img = Sprites.portrait('minion', { color: '#6a1622' }, 48);
+    else img = Sprites.portrait('npc', { npc: 'king', color: '#c9a36a' }, 48);
+    return h('div', { class: 'lg-row' }, portraitImg(img, 'lg-av'), h('div', { class: 'lg-text' }, e.text), h('span', { class: 'lg-ico' }, e.icon || '•'));
+  }
+  /* Spec §3.1: clipboard ledger in the centre of the screen, newest first, grouped by day. */
+  function openLedger() {
+    const s = Game.state;
+    if (!s) return;
+    unread = 0;
+    const badge = $('#hud-side [data-key="L"] .badge');
+    if (badge) badge.remove();
+    const paper = h('div', { class: 'lg-paper' });
+    let lastDay = null;
+    for (const e of s.log.slice().reverse()) {
+      if (e.day !== lastDay) { lastDay = e.day; paper.append(h('div', { class: 'lg-day' }, `Day ${e.day}`)); }
+      paper.append(ledgerRow(e));
+    }
+    if (!s.log.length) paper.append(h('p', { class: 'dim' }, 'Nothing has happened yet.'));
+    const board = h('div', { class: 'clipboard' }, h('div', { class: 'clip' }), h('div', { class: 'lg-title' }, '📜 Adventure Log'), paper);
+    ledgerAppend = e => {
+      let head = paper.querySelector('.lg-day');
+      if (!head || head.textContent !== `Day ${e.day}`) { head = h('div', { class: 'lg-day' }, `Day ${e.day}`); paper.prepend(head); }
+      head.after(ledgerRow(e));
+    };
+    return modal({
+      cls: 'ledger', body: board, buttons: [{ label: 'Close', key: 'Esc', value: null }],
+      onKey: (e, k) => {
+        if (k === 'W' || k === 'ARROWUP') { paper.scrollBy(0, -80); return true; }
+        if (k === 'S' || k === 'ARROWDOWN') { paper.scrollBy(0, 80); return true; }
+        if (k === 'L') return true;
+        return false;
+      },
+      onClose: () => { ledgerAppend = null; },
+    });
+  }
+  function openRequest() {
+    const s = Game.state, r = s && s.request;
+    if (!r) return;
+    const rows = s.players.map(p => `<li>${U.esc(p.name)}: ${U.fmt(Math.min(r.progress[p.id] || 0, r.n))} / ${U.fmt(r.n)}${r.winner === p.id ? ' 👑' : ''}</li>`).join('');
+    modal({ title: `👑 King's Request`, html: `<p class="rq-big">${r.icon} ${U.esc(r.text)}</p><p>Posted on day ${r.day}, ends after day ${r.ends}. The first hero to finish earns <b>+1 ⭐ and ${U.fmt(r.reward)} G</b>.</p>${r.winner != null ? `<p><b>Completed by ${U.esc(s.players[r.winner].name)}.</b> A new request arrives next week.</p>` : ''}<ul>${rows}</ul>`, buttons: [{ label: 'OK', key: 'Enter', value: true, cls: 'primary' }] });
   }
 
   /* ================================================================ modal system */
@@ -185,7 +235,7 @@ const UI = (() => {
     scr.append(h('div', { class: 'title-wrap' },
       h('h1', { class: 'logo' }, h('span', { class: 'l1' }, 'Sole'), h('span', { class: 'l2' }, 'Blessed')),
       h('div', { class: 'tagline' }, "A board-game RPG · The King's Blessing awaits"),
-      h('div', { class: 'panel cinematic' }, h('div', { class: 'cine-label' }, '📜 System'), text),
+      h('div', { class: 'panel cinematic' }, text),
       h('div', { class: 'title-menu' },
         btn('Start Game', '1', () => openCreate(), { cls: 'primary big' }),
         btn('Load Game', '2', () => openSlots('load'), { cls: 'big' }),
@@ -252,14 +302,11 @@ const UI = (() => {
         cards.append(card);
       });
       rules.innerHTML = '';
-      const days = h('div', { class: 'seg small' }, h('span', { class: 'seg-label' }, 'Length'));
-      DATA.DAY_OPTIONS.forEach(d => days.append(btn(`${d} days${d === 35 ? ' (spec)' : ''}`, null, () => { st.rules.days = d; refresh(); }, { cls: st.rules.days === d ? 'on' : '' })));
-      const pace = h('div', { class: 'seg small' }, h('span', { class: 'seg-label' }, 'Pace'));
-      Object.keys(DATA.PACES).forEach(k => pace.append(btn(DATA.PACES[k].name, null, () => { st.rules.pace = k; refresh(); }, { cls: st.rules.pace === k ? 'on' : '' })));
-      const recommended = st.rules.days === DATA.RULES_RECOMMENDED.days && st.rules.pace === DATA.RULES_RECOMMENDED.pace;
-      rules.append(days, pace,
-        btn(recommended ? '★ Recommended' : '★ Use Recommended', 'R', () => { st.rules = Object.assign({}, DATA.RULES_RECOMMENDED); refresh(); }, { cls: recommended ? 'on' : '' }),
-        h('div', { class: 'rules-note' }, DATA.PACES[st.rules.pace].text));
+      const days = h('div', { class: 'seg small' });
+      DATA.DAY_OPTIONS.forEach((d, i) => days.append(btn(d ? `📅 ${d} days` : '♾️ Endless', i ? 'E' : 'T', () => { st.rules.days = d; refresh(); }, { cls: st.rules.days === d ? 'on' : '' })));
+      rules.append(days, h('div', { class: 'rules-note' }, st.rules.days
+        ? `The Demon Lord must fall and his head reach the Royal Castle within ${st.rules.days} days.`
+        : "No time limit: the game ends when the Demon Lord's Head is delivered to the Royal Castle."));
       preview.innerHTML = '';
       if (st.classId) preview.append(portraitImg(Sprites.portrait('hero', { classId: st.classId, gender: st.gender || 'm', color: DATA.PLAYER_COLORS[0] }, 160), 'big-portrait'), h('div', { class: 'pv-name' }, st.name || '???'));
       const missing = [!st.name && 'a name', !st.gender && 'a gender', !st.classId && 'a class'].filter(Boolean);
@@ -284,7 +331,7 @@ const UI = (() => {
           h('label', null, 'Name'), h('div', { class: 'row' }, name, btn('🎲', null, () => { name.value = U.pick(DATA.BOT_NAMES); refresh(); }, { cls: 'small' })),
           h('label', null, 'Gender'), genders,
           h('label', null, 'Class'), cards,
-          h('label', null, 'Rules'), rules),
+          h('label', null, 'Game length'), rules),
         preview),
       h('div', { class: 'create-foot' }, why, btn('Back', 'Esc', () => { popKeys('create'); showTitle(); }), begin)));
     refresh();
@@ -297,7 +344,8 @@ const UI = (() => {
       if (k === 'ENTER') { start(); return true; }
       if (k === 'M') { st.gender = 'm'; refresh(); return true; }
       if (k === 'F') { st.gender = 'f'; refresh(); return true; }
-      if (k === 'R') { st.rules = Object.assign({}, DATA.RULES_RECOMMENDED); refresh(); return true; }
+      if (k === 'T') { st.rules.days = DATA.DAY_OPTIONS[0]; refresh(); return true; }
+      if (k === 'E') { st.rules.days = 0; refresh(); return true; }
       if (['1', '2', '3'].includes(k)) { st.classId = DATA.TIER1[Number(k) - 1]; Sound.play('select'); refresh(); return true; }
       if (k === 'A' || k === 'ARROWLEFT' || k === 'D' || k === 'ARROWRIGHT') {
         const i = DATA.TIER1.indexOf(st.classId), d = (k === 'A' || k === 'ARROWLEFT') ? -1 : 1;
@@ -308,7 +356,7 @@ const UI = (() => {
   }
   async function briefBots(state) {
     const rows = state.players.slice(1).map(p => `<div class="rival">${`<img class="portrait" src="${Sprites.heroPortrait(p, 64)}">`}<div><b>${U.esc(p.name)}</b><br><small>${DATA.CLASSES[p.classId].name}</small></div></div>`).join('');
-    await modal({ title: 'Your Rivals', html: `<p>Three other heroes answer the King's call:</p><div class="rivals">${rows}</div><p class="dim">Rules: ${state.rules.days} days · ${DATA.PACES[state.rules.pace].name} pace</p>`, buttons: [{ label: 'Let\'s go!', key: 'Enter', value: true, cls: 'primary' }], closable: false });
+    await modal({ title: 'Your Rivals', html: `<p>Three other heroes answer the King's call:</p><div class="rivals">${rows}</div><p class="dim">Game length: ${state.rules.days ? state.rules.days + ' days' : 'Endless'}</p>`, buttons: [{ label: 'Let\'s go!', key: 'Enter', value: true, cls: 'primary' }], closable: false });
   }
 
   /* ---------------------------------------------------------------- settings / help / saves / pause */
@@ -324,14 +372,14 @@ const UI = (() => {
     const speed = h('div', { class: 'seg small' });
     const drawSpeed = () => {
       speed.innerHTML = '';
-      [[2, '2× (spec)'], [4, '4×']].forEach(([v, l]) => speed.append(btn(l, null, () => { st.botSpeed = v; Save.saveSettings(st); drawSpeed(); }, { cls: st.botSpeed === v ? 'on' : '' })));
+      DATA.SPEEDS.forEach(v => speed.append(btn(`${v}×`, null, () => { st.speed = v; Save.saveSettings(st); drawSpeed(); }, { cls: st.speed === v ? 'on' : '' })));
     };
     drawSpeed();
     return modal({
       title: '⚙️ Settings', cls: 'wide',
       body: h('div', { class: 'settings' },
         slider('🎵 Music', 'musicVolume'), slider('🔊 Sound effects', 'sfxVolume'),
-        h('div', { class: 'set-row' }, h('label', null, '🤖 Bot speed'), speed),
+        h('div', { class: 'set-row' }, h('label', null, '⏩ Game speed'), speed),
         h('h3', null, 'Controls'), keyTable(),
         h('h3', null, 'How to Play (summary)'), helpList(true)),
       buttons: [{ label: 'Close', key: 'Esc', value: true }],
@@ -363,8 +411,9 @@ const UI = (() => {
       box.innerHTML = '';
       if (!Save.available()) box.append(h('p', { class: 'warn' }, '⚠️ Browser storage is unavailable (private mode?). Saves will be lost when the tab closes.'));
       const slots = Save.listSlots();
-      slots.forEach(({ slot, meta, corrupt }) => {
-        const row = h('div', { class: 'slot' }, slotCard(corrupt ? null : meta, `Slot ${slot}`));
+      slots.forEach(({ slot, meta, corrupt, outdated }) => {
+        const bad = corrupt || outdated;
+        const row = h('div', { class: 'slot' }, bad ? h('div', { class: 'slot-info empty' }, h('b', null, `Slot ${slot}`), h('span', null, outdated ? 'Saved by an older version (old map) — cannot be loaded' : 'Corrupted save')) : slotCard(meta, `Slot ${slot}`));
         const actions = h('div', { class: 'slot-actions' });
         if (mode === 'save') {
           actions.append(btn(meta ? 'Overwrite' : 'Save', String(slot), async () => {
@@ -378,10 +427,10 @@ const UI = (() => {
             if (!st) { toast('This save cannot be read.', 'bad'); return; }
             ref.close(true);
             Game.start(st);
-          }, { disabled: !meta || corrupt, reason: corrupt ? 'This save is corrupted.' : 'This slot is empty.', cls: 'primary' }));
+          }, { disabled: !meta || bad, reason: outdated ? 'This save is from an older version of the game.' : corrupt ? 'This save is corrupted.' : 'This slot is empty.', cls: 'primary' }));
           actions.append(btn('Delete', null, async () => {
-            if (await confirm('Delete save?', `Delete slot ${slot} (<b>${U.esc(meta.name)}</b>, Day ${meta.day})? This cannot be undone.`, 'Delete')) { Save.deleteSlot(slot); toast('Deleted.', 'good'); build(box); }
-          }, { disabled: !meta && !corrupt, reason: 'This slot is empty.', cls: 'danger' }));
+            if (await confirm('Delete save?', `Delete slot ${slot}${meta ? ` (<b>${U.esc(meta.name)}</b>, Day ${meta.day})` : ''}? This cannot be undone.`, 'Delete')) { Save.deleteSlot(slot); toast('Deleted.', 'good'); build(box); }
+          }, { disabled: !meta && !bad, reason: 'This slot is empty.', cls: 'danger' }));
         }
         row.append(actions);
         box.append(row);
@@ -406,7 +455,7 @@ const UI = (() => {
     const canSave = Game.canSave();
     const res = await modal({
       title: '⏸ Paused', cls: 'pause',
-      body: h('div', { class: 'pause-info' }, Game.state ? `Day ${Game.state.day} / ${Game.maxDays()} · ${DATA.PACES[Game.state.rules.pace].name} pace` : ''),
+      body: h('div', { class: 'pause-info' }, Game.state ? `Day ${Game.state.day} / ${Game.endless() ? '∞ (Endless)' : Game.maxDays()} · Speed ${Game.speed()}×` : ''),
       buttons: [
         { label: 'Resume', key: 'Esc', value: 'resume', cls: 'primary' },
         { label: 'Save', key: '1', value: 'save', disabled: !canSave, reason: 'You can save only on your own turn, before rolling.' },
@@ -456,9 +505,11 @@ const UI = (() => {
         sideBtn('🎲', 'Move', 'Q', () => onQ()),
         sideBtn('🎒', 'Inventory', 'O', () => onO()),
         sideBtn('🎥', 'Free Camera', 'I', () => toggleFreeCam()),
-        sideBtn('📋', 'Status', 'X', () => onX())),
+        sideBtn('📋', 'Status', 'X', () => onX()),
+        sideBtn('📜', 'Log', 'L', () => openLedger())),
+      h('div', { id: 'hud-request', class: 'panel', onclick: () => openRequest() }),
       h('div', { id: 'hud-others' }),
-      h('div', { id: 'hud-bl' }, h('div', { id: 'hud-log' }), btn('How to Play', 'Z', () => openHelp(), { cls: 'small' })),
+      h('div', { id: 'hud-bl' }, btn('How to Play', 'Z', () => openHelp(), { cls: 'small' })),
       h('div', { id: 'hud-skip' }, 'Bot turn · ', kbd('Enter'), ' skip ahead'),
     );
   }
@@ -481,7 +532,18 @@ const UI = (() => {
     if (!s || !S.inGame) return;
     const cur = Game.cur();
     const dl = $('#hud-day .day-label');
-    if (dl) dl.innerHTML = `Day <b>${s.day}</b> / ${Game.maxDays()}`;
+    if (dl) dl.innerHTML = `Day <b>${s.day}</b> / ${Game.endless() ? '∞' : Game.maxDays()}`;
+    const rq = $('#hud-request');
+    if (rq) {
+      const r = s.request;
+      rq.classList.toggle('show', !!r);
+      if (r) {
+        const left = r.ends - s.day + 1, mine = r.progress[Game.human() ? Game.human().id : -1] || 0;
+        rq.innerHTML = r.winner != null
+          ? `<span class="rq-ico">👑</span><span><b>King's Request</b> done by ${U.esc(s.players[r.winner].name)}</span>`
+          : `<span class="rq-ico">${r.icon}</span><span><b>King's Request:</b> ${U.esc(r.text)} <small>(${U.fmt(Math.min(mine, r.n))}/${U.fmt(r.n)} · ${left} day${left > 1 ? 's' : ''} left)</small></span>`;
+      }
+    }
     const act = $('#hud-active');
     if (act) {
       act.innerHTML = '';
@@ -511,6 +573,7 @@ const UI = (() => {
     const reason = cur.isBot ? `Wait — it's ${cur.name}'s turn.` : 'Not available right now.';
     document.querySelectorAll('#hud-side .side-btn').forEach(b => {
       const k = b.dataset.key;
+      if (k === 'L') { b.classList.remove('disabled'); b.title = ''; return; }    // reading the log is always allowed
       let off = !human;
       if (!cur.isBot && (k === 'I' || k === 'X')) off = false;   // looking around is fine on your own turn
       if (cur.isBot) off = true;                                  // spec: bot turn disables commands (except Pause)
@@ -518,7 +581,7 @@ const UI = (() => {
       b.title = off ? reason : '';
     });
     const q = $('#hud-side [data-key="Q"] small');
-    if (q) q.textContent = human && cur.battleId ? 'Battle' : 'Move';
+    if (q) q.textContent = 'Move';
     $('#hud-skip').classList.toggle('show', cur.isBot && S.hud === 'normal');
   }
 
@@ -545,8 +608,7 @@ const UI = (() => {
     return new Promise(resolve => {
       S.turn = { p, resolve };
       refresh();
-      if (p.battleId) toast(`⚔️ You are locked in battle. Press Q to continue fighting (you may use 1 item first).`, 'info');
-      else if (Game.joinableBattle(p)) toast('⚔️ A Demon Lord Army battle is raging here! Press Q to join or roll.', 'info');
+      if (Game.joinableBattle(p)) toast('⚔️ A Demon Lord Army battle is raging here! Press Q to join or roll.', 'info');
     });
   }
   function endTurnAction(result) {
@@ -559,8 +621,7 @@ const UI = (() => {
   async function onQ() {
     const t = S.turn; if (!t) return;
     const p = t.p;
-    if (p.turnOver) return endTurnAction({ type: 'end' });
-    if (p.battleId) return endTurnAction({ type: 'battle' });
+    if (p.turnOver || p.battleId) return endTurnAction({ type: 'end' });
     const jb = Game.joinableBattle(p);
     if (jb) {
       const d = Battle.enemyDef(jb);
@@ -597,6 +658,7 @@ const UI = (() => {
       if (k === 'D' || k === 'ARROWRIGHT') { MapSys.pan(d, 0); return true; }
       if (k === 'ESCAPE' || k === 'I') { toggleFreeCam(); return true; }
     }
+    if (k === 'L') { openLedger(); return true; }
     if (cur.isBot) {
       if (k === 'ENTER' && !Game.skipping) { Game.skipping = true; toast('⏩ Skipping ahead…'); return true; }
       return false;
@@ -650,23 +712,20 @@ const UI = (() => {
 
   /* ================================================================ movement */
   function walk(p, path) { return MapSys.walk('p' + p.id, path, 230 * Game.delayFactor()); }
-  function stoppable(start, path, remaining) {
-    const cur = path[path.length - 1];
-    const reach = MapSys.reachable(cur, remaining, id => Game.isBlocking(id));
-    const set = new Set();
-    for (const [id, route] of reach) if (!route.some((n, i) => i > 0 && path.includes(n))) set.add(id);
-    if (path.length > 1) set.add(cur);
-    set.delete(start);
-    return set;
-  }
-  function chooseDestination(p, reach, total) {
+  /* Spec §3.2–3.3: walk EXACTLY the rolled number of spaces. Arrows only offer steps that can still
+   * finish exactly; goal flags mark every space the move can end on. */
+  function chooseDestination(p, moves, total) {
     Game.needHuman();
     setHud('move');
-    const start = p.spaceId;
-    const blockingSet = new Set([...reach.keys()].filter(id => Game.isBlocking(id)));
-    const m = S.move = { p, start, path: [start], total, mode: 'manual', list: [], idx: 0, busy: false };
-    m.list = [...reach.keys()].sort((a, b) => reach.get(a).length - reach.get(b).length || MapSys.spaces[a].x - MapSys.spaces[b].x);
-    const left = $('#move-left'), info = $('#move-info');
+    const start = p.spaceId, ends = moves.ends;
+    const blk = id => Game.isBlocking(id);
+    const blockingSet = new Set([...ends.keys()].filter(blk));
+    const m = S.move = { p, start, path: [start], total, mode: 'manual', list: [], idx: 0, busy: false, live: moves };
+    const s0 = MapSys.spaces[start];
+    m.list = [...ends.keys()].sort((a, b) => {
+      const A = MapSys.spaces[a], B = MapSys.spaces[b];
+      return Math.atan2(A.y - s0.y, A.x - s0.x) - Math.atan2(B.y - s0.y, B.x - s0.x);
+    });
     $('#move-hud').innerHTML = '';
     $('#move-hud').append(
       h('div', { id: 'move-cmds', class: 'panel' },
@@ -677,30 +736,29 @@ const UI = (() => {
       h('div', { id: 'move-left', class: 'panel' }),
       h('div', { id: 'move-info', class: 'panel' }),
       h('div', { id: 'dpad' }, ['W', 'A', 'S', 'D'].map(k => h('button', { class: `dp dp-${k}`, type: 'button', onclick: e => { e.stopPropagation(); dir(k); } }, { W: '▲', A: '◀', S: '▼', D: '▶' }[k]))));
-    void left; void info;
     return new Promise(resolve => {
-      m.resolve = resolve;
       function remaining() { return total - (m.path.length - 1); }
       function update() {
         const cur = m.path[m.path.length - 1];
         const L = $('#move-left');
         L.innerHTML = '';
         if (m.mode === 'auto') {
-          const sel = m.list[m.idx], route = reach.get(sel);
-          L.append(h('div', { class: 'big-num' }, `${route.length - 1}`), h('div', null, `space${route.length > 2 ? 's' : ''} away`),
+          const sel = m.list[m.idx], route = ends.get(sel);
+          L.append(h('div', { class: 'big-num' }, `${m.idx + 1}/${m.list.length}`), h('div', null, 'destinations · A/D to pick'),
             btn('Go here', 'Enter', () => confirmAuto(), { cls: 'primary small' }), btn('Back', 'Esc', () => setMode('manual'), { cls: 'small' }));
-          MapSys.setOverlay({ reach: new Set(reach.keys()), blocking: blockingSet, route, selected: sel, markers: true });
+          MapSys.setOverlay({ reach: new Set(ends.keys()), dests: new Set(ends.keys()), blocking: blockingSet, route, selected: sel, markers: true });
           MapSys.setMode('free'); MapSys.focus(MapSys.spaces[sel].x, MapSys.spaces[sel].y);
           info(sel);
         } else {
-          L.append(h('div', { class: 'big-num' }, String(remaining())), h('div', null, `space${remaining() === 1 ? '' : 's'} remaining`),
-            btn('Stop here', 'Enter', () => stopHere(), { cls: 'primary small', disabled: m.path.length < 2, reason: 'Move at least 1 space first.' }));
+          m.live = MapSys.exactMoves(m.path, remaining(), blk);
+          L.append(h('div', { class: 'big-num' }, String(remaining())), h('div', null, `step${remaining() === 1 ? '' : 's'} left`),
+            h('small', { class: 'dim' }, m.path.length > 1 ? 'Walk every step · step back to undo' : 'You must walk every step'));
           const arrows = { from: cur };
-          const canGo = remaining() > 0 && !(cur !== start && Game.isBlocking(cur));
-          if (canGo) for (const k in MapSys.spaces[cur].dirs) { const n = MapSys.spaces[cur].dirs[k]; if (!m.path.includes(n)) arrows[k] = n; }
+          for (const k in MapSys.spaces[cur].dirs) { const n = MapSys.spaces[cur].dirs[k]; if (m.live.next.has(n)) arrows[k] = n; }
           const prev = m.path[m.path.length - 2];
           if (prev) for (const k in MapSys.spaces[cur].dirs) if (MapSys.spaces[cur].dirs[k] === prev) arrows[k] = prev;
-          MapSys.setOverlay({ reach: stoppable(start, m.path, remaining()), blocking: blockingSet, arrows, markers: true, pathSet: new Set(m.path.slice(1)) });
+          const dests = new Set(m.live.ends.keys());
+          MapSys.setOverlay({ reach: dests, dests, blocking: blockingSet, arrows, markers: true, pathSet: new Set(m.path.slice(1)) });
           if (m.mode === 'manual') MapSys.setMode('follow');
           info(cur === start ? null : cur);
         }
@@ -712,33 +770,32 @@ const UI = (() => {
         const sp = MapSys.spaces[id];
         const tags = [];
         const s = Game.state;
-        s.players.forEach(o => { if (o.spaceId === id && o !== p) tags.push(`${o.name}${o.battleId ? ' ⚔️' : ''}`); });
+        s.players.forEach(o => { if (o.spaceId === id && o !== p) tags.push(`${o.name}${o.battleId ? ' ⚔️' : o.down ? ' 💤' : ''}`); });
         if (s.minion && s.minion.spaceId === id) tags.push('😈 Minion');
         if (s.head.space === id) tags.push("💀 Demon Lord's Head");
+        if (s.battles.some(x => x.kind !== 'duel' && x.space === id)) tags.push('⚔️ Fight in progress — you must join');
         if (sp.type === 't' && s.chests[id] != null) tags.push('(opened)');
-        I.innerHTML = `<b>${U.esc(MapSys.spaceName(sp, s))}</b>${sp.type === 'L' ? `<br><small>${DATA.PLACES[sp.code].text}</small>` : ''}${tags.length ? `<br><small>${U.esc(tags.join(' · '))}</small>` : ''}${Game.isBlocking(id) ? '<br><small class="red">Blocks the road — you can stop here but not pass.</small>' : ''}`;
+        I.innerHTML = `<b>${U.esc(MapSys.spaceName(sp, s))}</b>${sp.type === 'L' ? `<br><small>${DATA.PLACES[sp.code].text}</small>` : ''}${tags.length ? `<br><small>${U.esc(tags.join(' · '))}</small>` : ''}${Game.isBlocking(id) ? '<br><small class="red">Blocks the road — stepping here ends your move.</small>' : ''}`;
         I.classList.add('show');
       }
       function setMode(mode) {
         if (m.busy) return;
         if (mode === 'auto' && m.path.length > 1) { m.path = [start]; p.spaceId = start; }
-        if (mode === 'auto' && m.mode !== 'auto') { const cur = m.list.indexOf(m.list[m.idx]); m.idx = Math.max(0, cur); }
         m.mode = mode;
-        if (mode === 'free') { MapSys.setMode('free'); MapSys.setOverlay({ reach: stoppable(start, m.path, remaining()), blocking: blockingSet, markers: true }); toast('🎥 Free camera: W/A/S/D or drag. Esc to return.'); return; }
-        if (mode === 'full') { MapSys.setMode('full'); MapSys.setOverlay({ reach: new Set(reach.keys()), blocking: blockingSet, markers: true }); toast('🗺️ Full map. Esc to return.'); return; }
+        if (mode === 'free') { MapSys.setMode('free'); toast('🎥 Free camera: W/A/S/D or drag. Esc to return.'); return; }
+        if (mode === 'full') { MapSys.setMode('full'); toast('🗺️ Full map. Esc to return.'); return; }
         update();
       }
-      m.setMode = setMode;
       async function step(to) {
         m.busy = true;
         const from = m.path[m.path.length - 1];
         const back = m.path.length > 1 && m.path[m.path.length - 2] === to;
         if (back) m.path.pop(); else m.path.push(to);
-        await MapSys.walk('p' + p.id, [from, to], 170);
+        await MapSys.walk('p' + p.id, [from, to], 170 * Math.max(0.5, Game.delayFactor()));
         p.spaceId = to;
         m.busy = false;
         if (S.move !== m) return;
-        if (remaining() === 0) { finish(m.path.slice(), true); return; }
+        if (!back && (remaining() === 0 || blk(to))) { finish(m.path.slice(), true); return; }
         update();
       }
       function dir(k) {
@@ -749,27 +806,18 @@ const UI = (() => {
         const cur = m.path[m.path.length - 1];
         const n = MapSys.spaces[cur].dirs[k];
         if (!n) { Sound.play('error'); return; }
-        const prev = m.path[m.path.length - 2];
-        if (n === prev) { step(n); return; }
+        if (n === m.path[m.path.length - 2]) { step(n); return; }
         if (m.path.includes(n)) { toast('You cannot pass the same space twice.', 'bad'); Sound.play('error'); return; }
-        if (remaining() <= 0) return;
-        if (cur !== start && Game.isBlocking(cur)) { toast('A blocking space: you can stop here but not pass through.', 'bad'); Sound.play('error'); return; }
+        if (!m.live.next.has(n)) { toast(`That way cannot finish exactly ${total} step${total > 1 ? 's' : ''}.`, 'bad'); Sound.play('error'); return; }
         step(n);
       }
       m.dir = dir;
-      function stopHere() {
-        if (m.busy) return;
-        if (m.path.length < 2) { toast('Move at least 1 space.', 'bad'); Sound.play('error'); return; }
-        finish(m.path.slice(), true);
-      }
       function confirmAuto() {
         if (m.busy) return;
-        finish(reach.get(m.list[m.idx]), false);
+        finish(ends.get(m.list[m.idx]), false);
       }
-      m.confirmAuto = confirmAuto;
       m.tap = id => {
-        if (m.busy) return;
-        if (!reach.has(id)) return;
+        if (m.busy || !ends.has(id)) return;
         if (m.mode === 'auto' && m.list[m.idx] === id) { confirmAuto(); return; }
         if (m.path.length > 1) { m.path = [start]; p.spaceId = start; }
         m.mode = 'auto'; m.idx = m.list.indexOf(id); Sound.play('select'); update();
@@ -785,7 +833,7 @@ const UI = (() => {
         const alias = { ARROWUP: 'W', ARROWLEFT: 'A', ARROWDOWN: 'S', ARROWRIGHT: 'D' };
         const kk = alias[k] || k;
         if (['W', 'A', 'S', 'D'].includes(kk)) { dir(kk); return true; }
-        if (k === 'ENTER') { if (m.mode === 'auto') confirmAuto(); else if (m.mode === 'manual') stopHere(); return true; }
+        if (k === 'ENTER') { if (m.mode === 'auto') confirmAuto(); else toast(`Keep walking: ${remaining()} step${remaining() === 1 ? '' : 's'} left (or press I for Auto-Move).`); return true; }
         if (k === 'ESCAPE') { if (m.mode !== 'manual') { setMode('manual'); return true; } return false; }
         if (k === 'I') { setMode(m.mode === 'auto' ? 'manual' : 'auto'); return true; }
         if (k === 'E') { setMode(m.mode === 'free' ? 'manual' : 'free'); return true; }
@@ -794,7 +842,7 @@ const UI = (() => {
         return false;
       }, 'move');
       update();
-      toast(`🎲 Move up to ${total} space${total > 1 ? 's' : ''}: W/A/S/D step by step, or I for Auto-Move. Tap a glowing space on touch screens.`, 'info');
+      toast(`🎲 Walk exactly ${total} space${total > 1 ? 's' : ''}! W/A/S/D step by step — 🚩 flags show where you can end — or press I for Auto-Move.`, 'info');
     });
   }
   function endMove() {
@@ -849,7 +897,7 @@ const UI = (() => {
     const mods = [];
     if (Game.equipBonus(p, k)) mods.push(`+${Game.equipBonus(p, k)} gear`);
     const boosted = total !== base;
-    return h('div', { class: 'stat' }, h('span', { class: 'sk' }, k.toUpperCase()), h('b', { class: boosted ? 'green' : '' }, String(total)), h('small', null, boosted ? `(${base} × passive)` : mods.join(' ')));
+    return h('div', { class: 'stat' }, h('span', { class: 'sk' }, k.toUpperCase()), h('b', { class: boosted ? 'green' : '' }, String(total)), h('small', null, boosted ? `(${base} × passive/charm)` : mods.join(' ')));
   }
   function moveRow(name, text, cd, icon) {
     return h('div', { class: 'move-row' }, h('span', null, icon || '•'), h('div', null, h('b', null, name), h('small', null, text)), h('span', { class: `cdb ${cd ? 'wait' : 'ready'}` }, cd ? `${cd}d` : 'Ready'));
@@ -857,8 +905,6 @@ const UI = (() => {
   function openStatus(p, readOnly) {
     const s = Game.state;
     const c = Game.cls(p);
-    const own = !p.isBot && !readOnly;
-    const cc = Game.canChangeClass(p);
     const need = 10 * p.level;
     const eq = slot => { const id = p.equip[slot]; if (!id) return h('div', { class: 'eq empty' }, h('span', null, { weapon: '🗡️', armor: '🛡️', charm: '📿' }[slot]), 'Empty'); const g = DATA.GEAR[id]; return h('div', { class: 'eq' }, h('span', null, g.icon), h('div', null, h('b', null, g.name), h('small', null, gearText(g)))); };
     const body = h('div', { class: 'status' },
@@ -869,7 +915,8 @@ const UI = (() => {
           h('div', null, `Rank ${Game.rank(p)} · ⭐ ${p.stars} · 💰 ${money(p.money)}`),
           h('div', { class: 'xp' }, h('div', { class: 'xpbar' }, h('i', { style: `width:${p.level >= DATA.MAX_LEVEL ? 100 : p.exp / need * 100}%` })), h('small', null, p.level >= DATA.MAX_LEVEL ? 'MAX LEVEL' : `EXP ${p.exp} / ${need}`)),
           hpBar(p.hp, Game.maxHp(p)),
-          s.head.holder === p.id ? h('div', { class: 'red' }, "💀 Carrying the Demon Lord's Head!") : null)),
+          s.head.holder === p.id ? h('div', { class: 'red' }, "💀 Carrying the Demon Lord's Head!") : null,
+          p.down ? h('div', { class: 'red' }, `${p.downReason === 'ko' ? '🪦 Resurrecting' : '😵 Standing up'}: skips ${p.down} more turn${p.down > 1 ? 's' : ''}`) : null)),
       h('div', { class: 'st-cols' },
         h('div', null, h('h4', null, 'Stats'), h('div', { class: 'stats' }, h('div', { class: 'stat' }, h('span', { class: 'sk' }, 'HP'), h('b', null, String(Game.maxHp(p))), h('small', null, Game.equipBonus(p, 'hp') ? `+${Game.equipBonus(p, 'hp')} gear` : '')), statLine(p, 'at'), statLine(p, 'df'), statLine(p, 'sp')),
           h('h4', null, 'Equipment'), eq('weapon'), eq('armor'), eq('charm'),
@@ -881,16 +928,18 @@ const UI = (() => {
           p.specialDef ? moveRow(DATA.SKILLS[p.specialDef].name, `Special Defense · ${DATA.SKILLS[p.specialDef].text} · CD ${DATA.SKILLS[p.specialDef].cd}`, p.cd.specialDef, DATA.SKILLS[p.specialDef].icon) : moveRow('No Special Defense', 'Buy one at a Skillbook Shop', 0, '🛡️'),
           h('h4', null, 'Job EXP & Mastery'),
           h('div', { class: 'jobs' }, p.unlocked.map(cid => h('div', { class: `job ${cid === p.classId ? 'cur' : ''}` }, h('span', null, DATA.CLASSES[cid].short), h('div', { class: 'xpbar small' }, h('i', { style: `width:${(p.jobExp[cid] || 0) * 10}%` })), h('small', null, p.mastered.includes(cid) ? '★ Mastered' : `${p.jobExp[cid] || 0}/10`)))),
-          p.mastered.length ? h('small', { class: 'dim' }, `Mastery bonuses on level-up: ${p.mastered.map(m => DATA.CLASSES[m].short).join(', ')}`) : null)));
-    const buttons = [];
-    if (own) buttons.push({ label: 'Change Class', key: 'C', disabled: !cc.ok, reason: cc.reason, showWhy: true, onClick: close => { close(); openClassChange(p); } });
-    buttons.push({ label: 'Close', key: 'Esc', value: null });
+          p.mastered.length ? h('small', { class: 'dim' }, `Mastery bonuses on level-up: ${p.mastered.map(m => DATA.CLASSES[m].short).join(', ')}`) : null,
+          h('p', { class: 'hint' }, '🔁 Classes are changed at the Royal Castle or a Temple.'))));
+    const buttons = [{ label: 'Close', key: 'Esc', value: null }];
     return modal({ title: `📋 Status${p.isBot || readOnly ? ' (read-only)' : ''}`, cls: 'wide', body, buttons });
   }
   function gearText(g) {
-    return ['hp', 'at', 'df', 'sp'].filter(k => g[k]).map(k => `${k.toUpperCase()}+${g[k]}`).concat(g.moneyBonus ? ['Battle money +20%'] : []).join(' ');
+    if (g.slot === 'charm') return g.text;
+    return ['hp', 'at', 'df', 'sp'].filter(k => g[k]).map(k => `${k.toUpperCase()}+${g[k]}`).join(' ');
   }
-  function openClassChange(p) {
+  /* Class change screen (Royal Castle / Temple). Resolves with the chosen class id, or null. */
+  function chooseClass(p) {
+    Game.needHuman();
     let sel = p.classId;
     const ref = {};
     const grid = h('div', { class: 'cls-grid' });
@@ -919,13 +968,13 @@ const UI = (() => {
         h('p', { class: 'dim' }, unlocked ? (c.magic ? 'Magic class: uses SP for base damage.' : '') : `🔒 Unlock: ${c.unlockText}`),
         btn('Change to This Class', 'Enter', async () => {
           if (!(await confirm('Change class?', `Become a <b>${c.name}</b>? Your level and stats stay the same.`, 'Change'))) return;
-          if (Game.changeClass(p, sel)) { Sound.play('levelup'); toast(`🔁 You are now a ${c.name}!`, 'good'); refresh(); ref.close(true); }
+          Sound.play('levelup'); toast(`🔁 You are now a ${c.name}!`, 'good'); ref.close(sel);
         }, { cls: 'primary', disabled: !unlocked || sel === p.classId || !Game.canChangeClass(p).ok, reason: !unlocked ? `Locked — ${c.unlockText}.` : sel === p.classId ? 'This is your current class.' : Game.canChangeClass(p).reason, showWhy: true }));
     };
     draw();
     const order = DATA.CLASS_GRID.flat();
     return modal({
-      title: '🔁 Change Class', cls: 'wide', ref, body: h('div', { class: 'cls-wrap' }, grid, detail),
+      title: '🔁 Change Class', cls: 'wide', ref, body: h('div', { class: 'cls-wrap' }, grid, detail), escValue: null,
       buttons: [{ label: 'Back', key: 'Esc', value: null }],
       onKey: (e, k) => {
         const i = order.indexOf(sel);
@@ -1138,6 +1187,41 @@ const UI = (() => {
     return choice('⚔️ Another hero is here!', 'Challenge them to a one-round duel? The winner steals money, equipment, or an item.' + (Game.state.dlDefeated ? ' After the Demon Lord\'s defeat, winning a duel also earns 1 ⭐.' : ''), opts, { escValue: null });
   }
   function battleCommand(p, b, role, self, foe, cmds) { return BattleView.choose(role, cmds, self); }
+  /* Royal Castle / Temple menu (spec §5). Resolves with an option id. */
+  async function placeMenu(p, kind, opts) {
+    Game.needHuman();
+    const title = kind === 'castle' ? '🏰 Royal Castle' : '🛕 Temple';
+    const text = kind === 'castle' ? '"Welcome, hero. How may the crown help you?"' : 'Incense drifts through the quiet temple halls.';
+    const keys = { class: 'C', respawn: 'R', merit: 'M', leave: 'Esc' };
+    const c = await modal({ title, cls: 'place-menu', html: `<p>${text}</p><p class="dim">Respawn point: ${U.esc(spaceLabel(p.respawnId))} · Made merit ${p.merit}×</p>`, escValue: 'leave',
+      buttons: opts.map(o => ({ label: `${o.icon} ${o.label}`, key: keys[o.id], value: o.id, disabled: o.disabled, reason: o.reason, showWhy: !!o.disabled && o.id !== 'leave', cls: o.id === 'leave' ? '' : 'primary' })) });
+    if (c === 'merit') {
+      const o = opts.find(x => x.id === 'merit');
+      if (!(await confirm('Make merit?', `Donate <b>${U.fmt(o.cost)} G</b> (10% of your money) to the temple?`, 'Donate'))) return null;
+    }
+    return c;
+  }
+  /* Spec §6: walking into someone else's fight — choose whom to fight (no way out). */
+  function fightChoice(p, b, heroes) {
+    Game.needHuman();
+    const d = Battle.enemyDef(b);
+    const names = heroes.map(o => o.name).join(', ');
+    const opts = [{ label: `⚔️ Fight the ${U.esc(d.name)} <small>(${d.live.hp}/${d.live.maxHp} HP)${heroes.length ? ` alongside ${U.esc(names)}` : ''}</small>`, key: '1', value: { type: 'join' }, cls: 'primary' }];
+    heroes.forEach((o, i) => opts.push({ label: `🤺 Attack ${U.esc(o.name)} <small>(Lv ${o.level}, HP ${o.hp}/${Game.maxHp(o)})</small>`, key: String(i + 2), value: { type: 'duel', pid: o.id } }));
+    const after = b.kind === 'monster' ? ' If you team up, the heroes still standing duel each other once the monster falls.' : '';
+    return choice('⚔️ You walked into a fight!', `${heroes.length ? `${U.esc(names)} ${heroes.length > 1 ? 'are' : 'is'} fighting` : 'A battle rages against'} the <b>${U.esc(d.name)}</b> here. You can't walk away — pick your opponent. The winner of a duel takes over the fight.${after}`, opts, { closable: false });
+  }
+  async function restTurn(p) {
+    const left = p.down;
+    banner(p.downReason === 'ko' ? `🪦 ${p.name} is resurrecting…` : `😵 ${p.name} is standing up…`, p.color, left ? `${left} more turn${left > 1 ? 's' : ''} to go` : 'Back in action next turn!');
+    await Game.wait(900);
+  }
+  async function requestPosted(req) {
+    refresh();
+    if (Game.skipping) return;
+    Sound.play('turn');
+    await announce({ title: "King's Request", icon: '👑', text: `${req.icon} ${req.text}. The first hero to finish within 7 days earns +1 ⭐ and ${U.fmt(req.reward)} G!`, auto: Game.cur().isBot ? 2600 * Game.delayFactor() : 0 });
+  }
   function allocatePoints(p) {
     Game.needHuman();
     Sound.play('levelup');
@@ -1270,8 +1354,7 @@ const UI = (() => {
     setScene('board');
     setHud('normal');
     MapSys.setMode('follow');
-    $('#hud-log').innerHTML = '';
-    (Game.state.log || []).slice(-4).forEach(l => logLine(l.text));
+    unread = 0;
     Sound.music('board');
     refresh();
   }
@@ -1319,10 +1402,80 @@ const UI = (() => {
       h('div', { class: 'king-line' }, portraitImg(Sprites.portrait('npc', { npc: 'king', color: '#c9a36a' }, 72)), h('p', null, `“${D.results}”`)),
       h('div', { class: 'ranking', html: rows }),
       h('p', { class: 'winner' }, ranking[0] === human ? "🎉 You receive the King's Blessing!" : `${ranking[0].name} receives the King's Blessing.`),
+      h('div', { class: 'share-row' },
+        btn('📤 Share image', 'S', () => shareResults(kind, ranking), { cls: 'small' }),
+        btn('📋 Copy text', 'C', () => copyResults(kind, ranking), { cls: 'small' })),
       btn('Back to Start Screen', 'Enter', () => { popKeys('results'); Game.stop(); showTitle(); }, { cls: 'primary big' })));
     showScreen('screen-results');
     Sound.play(ranking[0] === human ? 'win' : 'lose');
-    pushKeys((e, k) => { if (k === 'ENTER') { popKeys('results'); Game.stop(); showTitle(); return true; } return true; }, 'results', true);
+    pushKeys((e, k) => {
+      if (k === 'ENTER') { popKeys('results'); Game.stop(); showTitle(); return true; }
+      if (k === 'S') { shareResults(kind, ranking); return true; }
+      if (k === 'C') { copyResults(kind, ranking); return true; }
+      return true;
+    }, 'results', true);
+  }
+
+  /* ---------------------------------------------------------------- sharing the final results */
+  const ENDING_NAMES = { good: 'Good Ending', bad: 'Bad Ending', secret: 'Secret Ending' };
+  function resultText(kind, ranking) {
+    const s = Game.state, medals = ['🥇', '🥈', '🥉', '4️⃣'];
+    return [`👑 Sole Blessed — ${ENDING_NAMES[kind] || kind} (Day ${s.day}${s.rules.days ? ` / ${s.rules.days}` : ', Endless'})`]
+      .concat(ranking.map((p, i) => `${medals[i]} ${p.name}${p.isBot ? '' : ' (me)'} — ${DATA.CLASSES[p.classId].short} Lv ${p.level} · ⭐ ${p.stars} · 💰 ${U.fmt(p.money)}`))
+      .concat([`${ranking[0].name} receives the King's Blessing! #SoleBlessed`]).join('\n');
+  }
+  function resultCanvas(kind, ranking) {
+    const cv = document.createElement('canvas'); cv.width = 1080; cv.height = 1080;
+    const c = cv.getContext('2d'), s = Game.state;
+    const g = c.createLinearGradient(0, 0, 0, 1080);
+    g.addColorStop(0, kind === 'good' ? '#ffe9a8' : kind === 'bad' ? '#3a2448' : '#2a1030'); g.addColorStop(1, kind === 'good' ? '#f6c75c' : '#12081a');
+    c.fillStyle = g; c.fillRect(0, 0, 1080, 1080);
+    const light = kind === 'good';
+    Sprites.rr(c, 60, 60, 960, 960, 48); c.fillStyle = 'rgba(255,246,226,.96)'; c.fill(); c.lineWidth = 10; c.strokeStyle = '#e8a53a'; c.stroke();
+    c.textAlign = 'center'; c.fillStyle = '#3b2412';
+    c.font = '900 84px "Trebuchet MS", sans-serif'; c.fillText('Sole Blessed', 540, 180);
+    c.font = '800 48px "Trebuchet MS", sans-serif'; c.fillStyle = kind === 'good' ? '#c0501a' : '#6a1f8a';
+    c.fillText(`${kind === 'good' ? '👑' : kind === 'bad' ? '🌑' : '🕳️'} ${ENDING_NAMES[kind] || kind}`, 540, 260);
+    c.font = '700 32px "Trebuchet MS", sans-serif'; c.fillStyle = '#6e4a2a';
+    c.fillText(`Day ${s.day}${s.rules.days ? ` of ${s.rules.days}` : ' · Endless'}`, 540, 310);
+    ranking.forEach((p, i) => {
+      const y = 368 + i * 145;
+      Sprites.rr(c, 120, y, 840, 130, 28); c.fillStyle = i === 0 ? '#fff1b8' : '#fffaf0'; c.fill(); c.lineWidth = 6; c.strokeStyle = p.color; c.stroke();
+      c.save(); c.beginPath(); c.arc(230, y + 65, 52, 0, Math.PI * 2); c.fillStyle = U.shade(p.color, 0.5); c.fill(); c.clip();
+      Sprites.drawHero(c, 226, y + 65 + 96, 2.4, { classId: p.classId, gender: p.gender, color: p.color, still: true, t: 0 });
+      c.restore();
+      c.textAlign = 'left'; c.fillStyle = '#3b2412';
+      c.font = '900 40px "Trebuchet MS", sans-serif'; c.fillText(`${['🥇', '🥈', '🥉', '4.'][i]} ${p.name}`, 300, y + 58);
+      c.font = '700 26px "Trebuchet MS", sans-serif'; c.fillStyle = '#6e4a2a'; c.fillText(`${DATA.CLASSES[p.classId].name} · Lv ${p.level}`, 300, y + 98);
+      c.textAlign = 'right'; c.fillStyle = '#3b2412'; c.font = '900 38px "Trebuchet MS", sans-serif'; c.fillText(`⭐ ${p.stars}`, 930, y + 58);
+      c.font = '700 26px "Trebuchet MS", sans-serif'; c.fillStyle = '#6e4a2a'; c.fillText(`💰 ${U.fmt(p.money)} G`, 930, y + 98);
+    });
+    c.textAlign = 'center'; c.fillStyle = '#3b2412'; c.font = '800 32px "Trebuchet MS", sans-serif';
+    c.fillText(`${ranking[0].name} receives the King's Blessing!`, 540, 990);
+    void light;
+    return cv;
+  }
+  async function shareResults(kind, ranking) {
+    const cv = resultCanvas(kind, ranking), text = resultText(kind, ranking);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    try {
+      const file = new File([blob], 'sole-blessed-results.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Sole Blessed', text }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'sole-blessed-results.png';
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('📥 Results image downloaded — share it anywhere!', 'good');
+  }
+  async function copyResults(kind, ranking) {
+    const text = resultText(kind, ranking);
+    try { await navigator.clipboard.writeText(text); toast('📋 Results copied to the clipboard.', 'good'); }
+    catch (e) {
+      const ta = h('textarea', null, text); document.body.append(ta); ta.select();
+      try { document.execCommand('copy'); toast('📋 Results copied to the clipboard.', 'good'); } catch (e2) { toast('Copy failed — select the text manually.', 'bad'); }
+      ta.remove();
+    }
   }
 
   /* ================================================================ public API */
@@ -1333,6 +1486,7 @@ const UI = (() => {
     setScene, showTitle, enterGame, refresh, turnStart, turnAction, rollDice, walk, chooseDestination, pickSpace, onMapTap,
     openStatus, openInventory, openHelp, openPause, openSettings,
     yesNo, chooseChallenge, battleCommand, allocatePoints, inventoryFull, charmChoice, stealChoice, pickTarget,
+    placeMenu, chooseClass, fightChoice, restTurn, requestPosted, openLedger,
     shop, horseBet, horseRace, dayStart, minionSpawn, minionWalk, warp, turnSummary, fatal, ending,
     isMoving: () => !!S.move,
     inGame: () => S.inGame,

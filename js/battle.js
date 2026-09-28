@@ -18,10 +18,11 @@ const Battle = {
 
   view() { return Game.sim ? SimView : BattleView; },
 
-  /* ================================================================ battle objects (saved in state.battles) */
+  /* ================================================================ battle objects (saved in state.battles)
+   * kind 'monster' | 'army' | 'duel'. `reserve` counts duels that will hand the fight back (brawls). */
   create(kind, space, armyKey, enemy) {
     const s = Game.state;
-    const b = { id: s.nextBattleId++, kind, space, armyKey: armyKey || null, enemy: enemy || null, parts: [], first: {}, mods: {} };
+    const b = { id: s.nextBattleId++, kind, space, armyKey: armyKey || null, enemy: enemy || null, parts: [], first: {}, mods: {}, reserve: 0 };
     s.battles.push(b);
     return b;
   },
@@ -35,12 +36,12 @@ const Battle = {
   removePart(b, p) {
     b.parts = b.parts.filter(id => id !== p.id);
     delete b.first[p.id]; delete b.mods[p.id];
-    p.battleId = null;
-    if (!b.parts.length) this.dispose(b);
+    if (p.battleId === b.id) p.battleId = null;
+    if (!b.parts.length && !b.reserve) this.dispose(b);
   },
   dispose(b) {
     const s = Game.state;
-    for (const id of b.parts) s.players[id].battleId = null;
+    for (const id of b.parts) if (s.players[id].battleId === b.id) s.players[id].battleId = null;
     s.battles = s.battles.filter(x => x !== b);
   },
 
@@ -71,7 +72,7 @@ const Battle = {
       special: p.special ? DATA.SKILLS[p.special] : null,
       specialDef: p.specialDef ? DATA.SKILLS[p.specialDef] : null,
       cd: p.cd,
-      coop: b && b.kind === 'army' ? Math.min(0.3, 0.1 * (b.parts.length - 1)) : 0,
+      coop: b && b.kind !== 'duel' ? Math.min(0.3, 0.1 * (b.parts.length - 1)) : 0,
       buffs: mods,
     };
   },
@@ -201,13 +202,13 @@ const Battle = {
       }
       if (!D.isHero && dmg > 0) {
         const dp = D.passive;
-        if ((dp === 'stickyBody' || dp === 'thickHide') && aCmd === 'strike') dmg *= 0.7;
+        if ((dp === 'stickyBody' || dp === 'thickHide' || dp === 'moltenBody') && aCmd === 'strike') dmg *= 0.7;
         if (dp === 'leapDodge' && aCmd === 'attack' && U.chance(0.2)) { dmg = 0; tag = 'DODGE'; }
         if (dp === 'shadowForm' && normal && U.chance(0.25)) { dmg = 0; tag = 'DODGE'; }
         if (dp === 'threeForms' && D.form === 3) reflected += dmg * 0.2;
       }
       if (!A.isHero && dmg > 0) {
-        if (A.passive === 'stinger' && U.chance(0.2)) { dmg *= 1.5; tag = 'STING!'; }
+        if ((A.passive === 'stinger' || A.passive === 'pounce') && U.chance(0.2)) { dmg *= 1.5; tag = A.passive === 'pounce' ? 'POUNCE!' : 'STING!'; }
         if (A.passive === 'poisonTail' && U.chance(0.2)) { dmg += 0.1 * D.maxHp; tag = 'POISON!'; }
       }
       dmg = U.round(dmg);
@@ -245,12 +246,12 @@ const Battle = {
     return parts.concat(R.notes).join(' ');
   },
 
-  /* ================================================================ flows */
+  /* ================================================================ monster & Demon Lord Army flows */
   async startMonster(p, key, opts) {
     const m = DATA.MONSTERS[key], mult = opts.e04 ? DATA.E04_MULT : 1, hp = U.round(m.hp * mult);
     const b = this.create('monster', p.spaceId, null, { key, mult, e04: !!opts.e04, hp, maxHp: hp, specialDay: 0 });
     this.addPart(b, p, null);
-    Game.log(`⚔️ ${p.name} encountered ${opts.e04 ? 'a fearsome' : 'a'} ${m.name} (Lv ${m.lv})!`);
+    Game.log(`⚔️ ${p.name} encountered ${opts.e04 ? 'a fearsome' : 'a'} ${m.name} (Lv ${m.lv})!`, p);
     await this.session(b, p, {});
   },
   async startArmy(p, key) {
@@ -259,7 +260,7 @@ const Battle = {
     const space = key === 'minion' ? s.minion.spaceId : p.spaceId;
     const b = this.create('army', space, key, null);
     this.addPart(b, p, null);
-    Game.log(`⚔️ ${p.name} challenges the ${this.enemyDef(b).name}!`);
+    Game.log(`⚔️ ${p.name} challenges the ${this.enemyDef(b).name}!`, p);
     await this.session(b, p, {});
   },
   async preBattleDialogue(p, key) {
@@ -281,19 +282,21 @@ const Battle = {
   async join(p, b) {
     if (!b) return;
     this.addPart(b, p, 'hero');
-    Game.log(`🤝 ${p.name} joined the battle against the ${this.enemyDef(b).name}!`);
+    Game.log(`🤝 ${p.name} joined the fight against the ${this.enemyDef(b).name}!`, p);
     await this.session(b, p, {});
   },
   async continueFor(p) {
     const b = Game.battleOf(p);
     if (!b) { p.battleId = null; return; }
-    Game.log(`⚔️ ${p.name} continues the battle against the ${this.enemyDef(b).name}.`);
+    if (Game.who(p).beforeBattle) await Game.who(p).beforeBattle(p, b);
+    if (b.kind === 'duel') { await this.duelSession(b, p); return; }
+    Game.log(`⚔️ ${p.name} continues the battle against the ${this.enemyDef(b).name}.`, p);
     await this.session(b, p, {});
   },
   /* End-of-day minion ambush: 1 round, minion attacks first, no card game. */
   async ambush(p) {
     const s = Game.state;
-    Game.log(`😈 The minion ambushes ${p.name}!`);
+    Game.log(`😈 The minion ambushes ${p.name}!`, 'minion');
     if (!p.isBot) Game.needHuman();
     const b = this.create('army', s.minion.spaceId, 'minion', null);
     this.addPart(b, p, 'enemy');
@@ -337,7 +340,7 @@ const Battle = {
     this.active = true;
     try {
       const scene = () => this.sceneFor(b, p);
-      await V.open(scene, { humanInvolved: !p.isBot });
+      await V.open(scene, { humanInvolved: !p.isBot, hero: p });
       if (b.first[p.id] == null) b.first[p.id] = (await V.cards(!p.isBot)) ? 'hero' : 'enemy';
       const rounds = opts.rounds || DATA.ROUNDS_PER_DAY;
       let outcome = null;
@@ -378,17 +381,18 @@ const Battle = {
       else {
         lost = U.round(p.money * (minion ? 0.2 : 0.1));
         p.money -= lost;
-        Game.log(`🏳️ ${p.name} gave up against the ${d.name} and lost ${lost} G.`);
+        Game.giveUp(p);
+        Game.log(`🏳️ ${p.name} gave up against the ${d.name}, lost ${lost} G, and needs ${DATA.DOWN_TURNS} turns to stand up.`, p);
       }
       Sound.play('lose');
       const lines = [`−${lost} G${minion ? ' (Sticky Fingers!)' : ''}`];
-      if (outcome === 'lose') lines.push(`Returned to ${MapSys.spaceName(MapSys.spaces[p.respawnId], Game.state)} with full HP.`);
-      else lines.push('HP unchanged. You stay on this space.');
-      if (b.kind === 'army') lines.push(`The ${d.name} keeps its wounds (${d.live.hp}/${d.live.maxHp} HP).`);
+      if (outcome === 'lose') lines.push(`Resurrecting at ${MapSys.spaceName(MapSys.spaces[p.respawnId], Game.state)}: skip the next ${DATA.DOWN_TURNS} turns.`);
+      else lines.push(`HP unchanged. You stay here and need ${DATA.DOWN_TURNS} turns to stand up.`);
+      if (b.kind === 'army' && d.live.hp > 0) lines.push(`The ${d.name} keeps its wounds (${d.live.hp}/${d.live.maxHp} HP).`);
       await V.result({ type: outcome, title: outcome === 'lose' ? 'Defeat…' : 'Surrendered', lines, p });
       return;
     }
-    Game.log(`⏳ ${p.name}'s battle with the ${d.name} will continue tomorrow.`);
+    Game.log(`⏳ ${p.name}'s battle with the ${d.name} will continue tomorrow.`, p);
     await V.result({ type: 'continue', title: 'To be continued', lines: ['The battle will continue on the next day.', `${d.name}: ${d.live.hp}/${d.live.maxHp} HP`], p });
   },
 
@@ -404,7 +408,10 @@ const Battle = {
     const stars = isArmy ? d.stars : b.enemy.e04 ? 1 : 0;
     p.stars += stars;
     if (isArmy) p.record.army++; else p.record.monsters++;
-    lines.push(`+${exp} EXP${p.level > lvBefore ? ` — Level ${p.level}!` : ''}`);
+    if (!isArmy || b.armyKey === 'minion') Game.track(p, 'kill');
+    if (!isArmy) Game.track(p, 'killKey', 1, b.enemy.key);
+    if (b.armyKey === 'minion') Game.track(p, 'minion');
+    lines.push(`+${exp} EXP${p.level > lvBefore ? ` — Level ${p.level}! HP fully restored` : ''}`);
     lines.push(`+${money} G`);
     lines.push(mastered ? `🌟 ${Game.cls(p).name} mastered!` : `Job EXP ${Math.min(10, p.jobExp[p.classId] || jobBefore)}/10`);
     if (stars) lines.push(`+${stars} ⭐`);
@@ -415,70 +422,96 @@ const Battle = {
     const others = b.parts.filter(id => id !== p.id).map(id => Game.player(id));
     for (const o of others) {
       const e = U.round(Game.expFrom(o, d.exp, d.lv) * 0.5), m = Game.gainMoney(o, U.round(d.money * 0.5), true);
-      Game.gainExp(o, e); Game.gainJobExp(o, 2); o.record.army++;
+      Game.gainExp(o, e); Game.gainJobExp(o, isArmy ? 2 : 1); o.record.army++;
       lines.push(`${o.name} (ally): +${e} EXP, +${m} G`);
     }
-    Game.log(`🏆 ${p.name} defeated the ${d.name}!${stars ? ` +${stars} ⭐` : ''}`);
+    Game.log(`🏆 ${p.name} defeated the ${d.name}!${stars ? ` +${stars} ⭐` : ''}`, p);
     Sound.play('win');
-    await V.result({ type: 'win', title: 'Victory!', lines, p });   // before the enemy leaves the world state
+    await V.result({ type: 'win', title: 'Victory!', lines, p, pose: { side: 'L', p } });   // before the enemy leaves the world state
     if (isArmy) {
-      if (b.armyKey === 'minion') { s.minion = null; s.minionNextDay = s.day + 1; }
+      if (b.armyKey === 'minion') { s.minion = null; s.minionNextDay = s.day + DATA.MINION_RESPAWN_DAYS; }
       else {
         s.army[b.armyKey].defeated = true;
         if (b.armyKey === 'B04') s.dlDefeated = true;
       }
     }
     for (const id of b.parts) Game.player(id).battleId = null;
-    b.parts = [];
+    b.parts = []; b.reserve = 0;
     this.dispose(b);
     for (const id of drops) {
-      if (id === 'IQ01') { s.head.holder = p.id; Game.log(`💀 ${p.name} claimed the Demon Lord's Head!`); }
+      if (id === 'IQ01') { s.head.holder = p.id; Game.log(`💀 ${p.name} claimed the Demon Lord's Head!`, p); }
       else if (DATA.CHARMS[id]) await Game.addCharm(p, id);
       else await Game.addItem(p, id);
     }
     await Game.allocatePoints(p);
     for (const o of others) await Game.allocatePoints(o);
+    // Spec §6: after the monster falls, the heroes still in the fight turn on each other.
+    const rival = !isArmy && others.find(o => !o.down);
+    if (rival) {
+      const duel = this.create('duel', b.space, null, null);
+      duel.firstId = null; duel.resume = null;
+      this.addPart(duel, p, null); this.addPart(duel, rival, null);
+      Game.log(`🤺 The fight goes on! ${p.name} and ${rival.name} now face each other.`, p);
+      if (!Game.sim) UI.toast(`🤺 The fight goes on: ${p.name} vs ${rival.name}!`, 'info');
+    }
     if (isArmy && b.armyKey !== 'minion' && !Game.sim && !(p.isBot && Game.skipping)) {
       if (b.armyKey === 'B04') await UI.dialogue([{ who: 'narrator', text: DATA.DIALOGUE.dlDefeated }, { who: 'system', text: "From now on every hero rolls 2 dice, and defeating another hero earns 1 ⭐. Bring the Demon Lord's Head to the Royal Castle!" }], { auto: p.isBot });
       else await UI.dialogue([{ who: 'villager', text: DATA.DIALOGUE.villager }], { auto: p.isBot });
     }
   },
 
-  /* ================================================================ hero vs hero (spec §6.3) */
-  async heroBattle(att, def) {
-    const V = this.view(), s = Game.state;
-    const b = { id: 0, kind: 'hero', parts: [att.id, def.id], mods: {}, first: {} };
-    for (const p of [att, def]) { b.mods[p.id] = { energy: p.buffs.energy, eater: p.buffs.eater, vines: false }; p.buffs.energy = false; p.buffs.eater = false; }
-    const left = !def.isBot ? def : att, right = left === att ? def : att;
-    Game.log(`⚔️ ${att.name} challenges ${def.name} to a duel!`);
+  /* ================================================================ hero duels (spec §6.3)
+   * 3 rounds per turn; if nobody falls, the duel continues on each duelist's next turn until one is
+   * knocked out or gives up. opts.from = a monster/army fight the target is pulled out of (brawl):
+   * the winner goes back into that fight afterwards. */
+  async startDuel(att, def, opts) {
+    const b = this.create('duel', def.spaceId, null, null);
+    b.firstId = null; b.resume = null;
+    if (opts && opts.from) {
+      const M = opts.from;
+      M.reserve = (M.reserve || 0) + 1;
+      this.removePart(M, def);
+      b.resume = M.id;
+    }
+    this.addPart(b, att, null); this.addPart(b, def, null);
+    Game.log(`🤺 ${att.name} challenges ${def.name} to a duel!`, att);
     if (!def.isBot) Game.needHuman();
+    await this.duelSession(b, att);
+  },
+  async duelSession(b, p) {
+    const V = this.view(), s = Game.state;
+    const other = Game.player(b.parts.find(id => id !== p.id));
+    const left = !other.isBot ? other : p, right = left === p ? other : p;
+    for (const h of [p, other]) { const m = b.mods[h.id]; if (h.buffs.energy) { m.energy = true; h.buffs.energy = false; } if (h.buffs.eater) { m.eater = true; h.buffs.eater = false; } }
     this.active = true;
     let result = null;
     try {
       const scene = () => ({
-        zone: MapSys.spaces[att.spaceId].zone, kind: 'hero',
+        zone: MapSys.spaces[b.space].zone, kind: 'duel',
         left: this.sceneHero(left, b), right: this.sceneHero(right, b), allies: [],
         leftCombatant: () => this.heroC(b, left), rightCombatant: () => this.heroC(b, right),
       });
-      await V.open(scene, { humanInvolved: !left.isBot, duel: true });
-      const leftFirst = await V.cards(!left.isBot);
-      const first = leftFirst ? left : right, second = first === left ? right : left;
-      V.round(1, 1);
-      for (const [A, D] of [[first, second], [second, first]]) {
-        const AC = this.heroC(b, A), DC = this.heroC(b, D);
-        V.roles(A === left ? 'L' : 'R');
-        const [aCmd, dCmd] = await Promise.all([this.heroCmd(A, b, 'atk', AC, DC), this.heroCmd(D, b, 'def', DC, AC)]);
-        const R = this.exchange(b, AC, DC, aCmd, dCmd);
-        R._A = AC;
-        this.luckyCheck(AC, R); this.luckyCheck(DC, R);
-        await V.reveal(A === left ? 'L' : 'R', R, this.summary(AC, DC, R));
-        if (R.surrender) { result = { W: A, L: D, died: false }; break; }
-        if (DC.hp <= 0) { result = { W: A, L: D, died: true }; break; }
-        if (AC.hp <= 0) { result = { W: D, L: A, died: true }; break; }
+      await V.open(scene, { humanInvolved: !left.isBot, duel: true, hero: left });
+      if (b.firstId == null) b.firstId = (await V.cards(!left.isBot)) ? left.id : right.id;
+      const first = Game.player(b.firstId), second = first === left ? right : left;
+      for (let r = 1; r <= DATA.ROUNDS_PER_DAY && !result; r++) {
+        V.round(r, DATA.ROUNDS_PER_DAY);
+        for (const [A, D] of [[first, second], [second, first]]) {
+          const AC = this.heroC(b, A), DC = this.heroC(b, D);
+          V.roles(A === left ? 'L' : 'R');
+          const [aCmd, dCmd] = await Promise.all([this.heroCmd(A, b, 'atk', AC, DC), this.heroCmd(D, b, 'def', DC, AC)]);
+          const R = this.exchange(b, AC, DC, aCmd, dCmd);
+          R._A = AC;
+          this.luckyCheck(AC, R); this.luckyCheck(DC, R);
+          await V.reveal(A === left ? 'L' : 'R', R, this.summary(AC, DC, R));
+          if (R.surrender) { result = { W: A, L: D, died: false }; break; }
+          if (DC.hp <= 0) { result = { W: A, L: D, died: true }; break; }
+          if (AC.hp <= 0) { result = { W: D, L: A, died: true }; break; }
+        }
       }
       if (!result) {
-        Game.log(`🤝 ${att.name} and ${def.name} fought to a draw.`);
-        await V.result({ type: 'draw', title: 'Draw!', lines: ['Neither hero fell this round.'] });
+        Game.log(`🤺 ${left.name} and ${right.name} are still fighting. The duel goes on!`, p);
+        await V.result({ type: 'continue', title: 'The duel goes on!', lines: ['Nobody fell in 3 rounds.', 'The duel continues on the next turn until someone is knocked out or gives up.'], p: left });
         return;
       }
       const { W, L, died } = result;
@@ -486,20 +519,34 @@ const Battle = {
       const lines = [];
       if (W.level < L.level) { const e = 40 * (L.level - W.level); Game.gainExp(W, e); lines.push(`${W.name}: +${e} EXP (beat a higher-level hero)`); }
       if (s.dlDefeated) { W.stars++; lines.push(`${W.name}: +1 ⭐`); }
-      if (s.head.holder === L.id) { s.head.holder = W.id; lines.push(`💀 ${W.name} takes the Demon Lord's Head!`); Game.log(`💀 ${W.name} took the Demon Lord's Head from ${L.name}!`); }
-      if (died) { const lost = Game.knockOut(L, { by: 'hero', pid: W.id }); lines.push(`${L.name} is knocked out (−${lost} G) and returns to their respawn point.`); }
-      else { lines.push(`${L.name} gave up.`); Game.log(`🏳️ ${L.name} gave up the duel against ${W.name}.`); }
-      Game.log(`🏆 ${W.name} won the duel against ${L.name}!`);
-      Sound.play(!W.isBot || (W.isBot && L.isBot) ? 'win' : 'lose');
-      await V.result({ type: 'hero', title: `${W.name} wins!`, lines, winner: W });
+      if (s.head.holder === L.id) { s.head.holder = W.id; lines.push(`💀 ${W.name} takes the Demon Lord's Head!`); Game.log(`💀 ${W.name} took the Demon Lord's Head from ${L.name}!`, W); }
+      for (const id of b.parts.slice()) Game.player(id).battleId = null;
+      b.parts = [];
+      this.dispose(b);
+      if (died) { const lost = Game.knockOut(L, { by: 'hero', pid: W.id }); lines.push(`${L.name} is knocked out (−${lost} G) and resurrects in ${DATA.DOWN_TURNS} turns.`); }
+      else { Game.giveUp(L); lines.push(`${L.name} gave up and needs ${DATA.DOWN_TURNS} turns to stand up.`); Game.log(`🏳️ ${L.name} gave up the duel against ${W.name}.`, L); }
+      Game.log(`🏆 ${W.name} won the duel against ${L.name}!`, W);
+      Game.track(W, 'duelWin');
+      Sound.play(!W.isBot || L.isBot ? 'win' : 'lose');
+      await V.result({ type: 'hero', title: `${W.name} wins!`, lines, winner: W, pose: { side: W === left ? 'L' : 'R', p: W } });
     } finally {
       this.active = false;
       V.close();
     }
-    if (result) {
-      const choice = await Game.who(result.W).stealChoice(result.W, result.L);
-      await this.applySteal(result.W, result.L, choice);
-      await Game.allocatePoints(result.W);
+    if (result) await this.afterDuel(b, result);
+  },
+  async afterDuel(b, result) {
+    const { W, L } = result;
+    const choice = await Game.who(W).stealChoice(W, L);
+    await this.applySteal(W, L, choice);
+    await Game.allocatePoints(W);
+    const M = b.resume != null && Game.state.battles.find(x => x.id === b.resume);
+    if (M) {
+      M.reserve = Math.max(0, (M.reserve || 1) - 1);
+      if (!W.down && !W.battleId) {
+        this.addPart(M, W, 'hero');
+        Game.log(`⚔️ The fight goes on: ${W.name} now faces the ${this.enemyDef(M).name}!`, W);
+      } else if (!M.parts.length && !M.reserve) this.dispose(M);
     }
   },
   stealOptions(L) {
@@ -513,7 +560,7 @@ const Battle = {
     if (!c || c.type === 'money') {
       const amt = U.round(L.money * 0.2);
       L.money -= amt; W.money += amt;
-      Game.log(`💰 ${W.name} took ${amt} G from ${L.name}.`);
+      Game.log(`💰 ${W.name} took ${amt} G from ${L.name}.`, W);
       Sound.play('coin');
     } else if (c.type === 'equip') {
       const id = L.equip[c.slot];
@@ -522,13 +569,13 @@ const Battle = {
         const old = W.equip[c.slot];
         if (old && DATA.EQUIP[old]) W.money += Game.sellPrice(old);
         Game.setEquip(W, c.slot, id);
-        Game.log(`🗡️ ${W.name} took and equipped ${L.name}'s ${DATA.GEAR[id].name}.`);
-      } else Game.log(`🗑️ ${W.name} took ${L.name}'s ${DATA.GEAR[id].name} and threw it away.`);
+        Game.log(`🗡️ ${W.name} took and equipped ${L.name}'s ${DATA.GEAR[id].name}.`, W);
+      } else Game.log(`🗑️ ${W.name} took ${L.name}'s ${DATA.GEAR[id].name} and threw it away.`, W);
     } else {
       const id = L[c.tab][c.idx];
       if (!id) return;
       L[c.tab].splice(c.idx, 1);
-      Game.log(`🎒 ${W.name} took ${DATA.ITEMS[id].name} from ${L.name}.`);
+      Game.log(`🎒 ${W.name} took ${DATA.ITEMS[id].name} from ${L.name}.`, W);
       await Game.addItem(W, id);
     }
     if (!Game.sim) UI.refresh();
@@ -544,7 +591,7 @@ const SimView = {
 
 /* ==================================================================== BattleView: canvas scene + DOM HUD */
 const BattleView = (() => {
-  let el = null, scene = null, isOpen = false, opts = {};
+  let el = null, scene = null, isOpen = false, opts = {}, hero = null, pickingItem = false;
   const fx = { lunge: {}, flash: {}, shake: null, floaters: [], particles: [], label: {} };
   const now = () => performance.now();
   const dur = ms => ms * Game.delayFactor();
@@ -567,6 +614,7 @@ const BattleView = (() => {
       <div class="bh-allies"></div>
       <div class="bh-stats"></div>
       <button class="btn small bh-info" data-key="Z"><kbd>Z</kbd> Info</button>
+      <button class="btn small bh-item hidden" data-key="O"><kbd>O</kbd> Item</button>
       <div class="bh-role L"></div><div class="bh-role R"></div>
       <div class="bh-label L"></div><div class="bh-label R"></div>
       <div class="bh-cmd L"></div><div class="bh-cmd R enemy"></div>
@@ -575,6 +623,7 @@ const BattleView = (() => {
       <div class="bh-cards"></div>
       <div class="bh-result"></div>`;
     $('.bh-info').onclick = () => showInfo();
+    $('.bh-item').onclick = () => itemMenu();
   }
   function sideData(side) { return side === 'L' ? getScene().left : getScene().right; }
   function refreshBars() {
@@ -718,7 +767,8 @@ const BattleView = (() => {
     Sprites.shadow(c, X, y, 60 * scale / 3, 16 * scale / 3, 0.3);
     c.save();
     if (flash) c.globalAlpha = 0.45;
-    if (d.draw.type === 'hero') Sprites.drawHero(c, X, y, scale, Object.assign({ t, facing, pose: L ? 'attack' : hurt ? 'hurt' : 'idle' }, d.draw));
+    const won = fx.victory && fx.victory.side === side;
+    if (d.draw.type === 'hero') Sprites.drawHero(c, X, y, scale, Object.assign({ t, facing, pose: won ? 'victory' : L ? 'attack' : hurt ? 'hurt' : 'idle' }, d.draw));
     else Sprites.drawMonster(c, d.draw.key, X, y, scale, { t, facing: -facing, form: d.draw.form, hurt });
     c.restore();
   }
@@ -754,6 +804,27 @@ const BattleView = (() => {
     c.restore();
   }
 
+  /* Spec §6 + §8.2: the battle screen is forced, so the once-per-turn item is used from here. */
+  function usableItems() {
+    if (!hero || hero.isBot || hero.itemUsed || Game.cur() !== hero || Game.state.phase === 'between') return [];
+    return hero.items.map((id, idx) => ({ id, idx })).filter(x => Game.canUseItem(hero, x.id, true).ok);
+  }
+  function refreshItemBtn() {
+    const b = $('.bh-item');
+    if (b) b.classList.toggle('hidden', !usableItems().length || !$('.bh-cmd.L.active'));
+  }
+  async function itemMenu() {
+    const list = usableItems();
+    if (!list.length || pickingItem) { if (!list.length) UI.toast('No usable item (healing items or Energy Drink, once per turn).', 'bad'); return; }
+    pickingItem = true;
+    const idx = await UI.choice('🎒 Use an item', `HP ${hero.hp}/${Game.maxHp(hero)}. Using an item does not cost your command.`,
+      list.map((x, i) => ({ label: `${DATA.ITEMS[x.id].icon} ${DATA.ITEMS[x.id].name} <small>${DATA.ITEMS[x.id].text}</small>`, key: String(i + 1), value: x.idx }))
+        .concat([{ label: 'Cancel', key: 'Esc', value: null }]), { escValue: null });
+    pickingItem = false;
+    if (idx == null) return;
+    await Game.useItem(hero, 'items', idx, true);
+    refreshBars(); refreshItemBtn();
+  }
   function setLabel(side, text, cls) {
     const l = $(`.bh-label.${side}`);
     l.textContent = text || '';
@@ -765,8 +836,10 @@ const BattleView = (() => {
     get isOpen() { return isOpen; },
     async open(sceneFn, o) {
       scene = sceneFn; lastScene = null; opts = o || {}; isOpen = true;
-      fx.floaters = []; fx.particles = []; fx.lunge = {}; fx.flash = {};
-      if (!el) build(); else build();
+      fx.floaters = []; fx.particles = []; fx.lunge = {}; fx.flash = {}; fx.victory = null;
+      hero = (o && o.hero) || null;
+      build();
+      document.getElementById('toast-root').innerHTML = '';
       el.classList.add('show');
       $('.bh-summary').textContent = '';
       UI.setScene('battle');
@@ -841,15 +914,18 @@ const BattleView = (() => {
           Sound.play('click'); res(c);
         };
         box.querySelectorAll('.dia').forEach(b => { b.onclick = () => tryPick(b.dataset.cmd); });
+        refreshItemBtn();
         UI.pushKeys(e => {
           const k = e.key.toUpperCase();
           const map = { W: 0, A: 1, D: 2, S: 3, ARROWUP: 0, ARROWLEFT: 1, ARROWRIGHT: 2, ARROWDOWN: 3 };
           if (k in map) { tryPick(ROLE_CMDS[role][map[k]]); return true; }
           if (k === 'Z') { showInfo(); return true; }
+          if (k === 'O') { itemMenu(); return true; }
           return false;
         }, 'cmd');
       });
       UI.popKeys('cmd');
+      $('.bh-item').classList.add('hidden');
       diamond(box, role, cmds, self, false);
       box.querySelector(`[data-cmd="${cmd}"]`).classList.add('picked');
       $('.bh-wait').classList.add('show');
@@ -899,10 +975,19 @@ const BattleView = (() => {
     async result(info) {
       refreshBars();
       if (Game.skipping && !(info.p && !info.p.isBot)) return;
+      let poseLine = '';
+      if (info.pose) {
+        // Per-class victory pose: the winner hops with their signature move and emoji burst.
+        const w = info.pose.p, cls = w.classId;
+        fx.victory = { side: info.pose.side };
+        for (let i = 0; i < 6; i++) setTimeout(() => spawnFloat(info.pose.side, Sprites.VICTORY_FX[cls], '#fff'), i * dur(160));
+        poseLine = `${w.name} ${DATA.CLASSES[cls].victory}`;
+        await Game.wait(1300);
+      }
       const box = $('.bh-result');
       const good = info.type === 'win' || (info.type === 'hero' && info.winner && !info.winner.isBot);
       box.innerHTML = `<div class="res-card ${good ? 'good' : info.type === 'continue' || info.type === 'draw' ? 'neutral' : 'bad'}">
-        <h2>${U.esc(info.title)}</h2><ul>${info.lines.map(l => `<li>${U.esc(l)}</li>`).join('')}</ul>
+        <h2>${U.esc(info.title)}</h2>${poseLine ? `<p class="pose-line">${U.esc(poseLine)}</p>` : ''}<ul>${info.lines.map(l => `<li>${U.esc(l)}</li>`).join('')}</ul>
         <button class="btn primary"><kbd>Enter</kbd> Continue</button></div>`;
       box.classList.add('show');
       const humanView = !!(scene && getScene().left.isHuman);

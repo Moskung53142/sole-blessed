@@ -88,9 +88,11 @@ const Sprites = (() => {
     const L = LOOKS[o.classId] || LOOKS.commoner;
     const t = o.t || 0, cls = o.classId;
     const hair = o.hair || (o.gender === 'f' ? '#6b3417' : '#3a2415');
-    const bob = (o.still ? 0 : Math.sin(t * 3.2) * 0.8);
+    const victory = o.pose === 'victory';
+    const bob = o.still ? 0 : victory ? -Math.abs(Math.sin(t * 7)) * 7 : Math.sin(t * 3.2) * 0.8;
     const lg = o.walk ? Math.sin(o.walk * TAU) * 3 : 0;
     const attack = o.pose === 'attack', hurt = o.pose === 'hurt';
+    const wai = victory && cls === 'templekid';
     c.save();
     c.translate(x, y); c.scale(s * (o.facing || 1), s);
     if (o.alpha != null) c.globalAlpha = o.alpha;
@@ -128,7 +130,9 @@ const Sprites = (() => {
     // shoulder pads
     if (cls === 'warlord') { circ(c, -9, Y(-31), 5); fs(c, '#aab4be'); circ(c, 9, Y(-31), 5); fs(c, '#aab4be'); }
     // back arm
-    limb(c, -7, Y(-30), -11, Y(-20), L.body, 4.5); circ(c, -11, Y(-19), 3); fs(c, SKIN, OUT, 1.5);
+    if (wai) { limb(c, -7, Y(-30), 1, Y(-34), L.body, 4.5); }
+    else if (victory) { limb(c, -7, Y(-30), -14, Y(-48), L.body, 4.5); circ(c, -14, Y(-49), 3); fs(c, SKIN, OUT, 1.5); }
+    else { limb(c, -7, Y(-30), -11, Y(-20), L.body, 4.5); circ(c, -11, Y(-19), 3); fs(c, SKIN, OUT, 1.5); }
     // scarf knot
     rr(c, -8, Y(-35), 16, 5, 2.5); fs(c, o.color || '#e8553d');
     // head
@@ -184,12 +188,13 @@ const Sprites = (() => {
         rr(c, -16, hy - 11, 34, 4, 2); fs(c, '#15151c'); rr(c, -9, hy - 22, 20, 12, 4); fs(c, '#15151c'); rr(c, -9, hy - 14, 20, 3, 1); fs(c, '#d2261f', null); break;
     }
     // front arm + weapon
-    const hx = attack ? 16 : 12, hyy = attack ? Y(-30) : Y(-21);
+    const hx = wai ? 3 : victory ? 15 : attack ? 16 : 12, hyy = wai ? Y(-34) : victory ? Y(-50) : attack ? Y(-30) : Y(-21);
     const W = { commoner: 'woodSword', warlord: 'bigSword', shaman: 'crookedStaff', archmage: 'orbStaff', slingshot: 'slingshot', bowlord: 'bow', isan: 'basket', gambler: 'dice', templekid: 'bowl' }[cls];
-    const ang = attack ? 1.1 : (W === 'bigSword' ? -0.5 : W === 'woodSword' ? 0.15 : 0);
-    if (W !== 'bow') weapon(c, W, hx, hyy, ang, t);
+    const ang = victory ? -0.25 + Math.sin(t * 7) * 0.15 : attack ? 1.1 : (W === 'bigSword' ? -0.5 : W === 'woodSword' ? 0.15 : 0);
+    if (W !== 'bow' && !wai) weapon(c, W, hx, hyy, ang, t);
     limb(c, 7, Y(-30), hx, hyy, L.body, 4.5); circ(c, hx, hyy, 3); fs(c, SKIN, OUT, 1.5);
-    if (W === 'bow') weapon(c, W, hx + 2, hyy - 4, attack ? 0.4 : 0, t);
+    if (wai) { circ(c, 1, Y(-35), 3); fs(c, SKIN, OUT, 1.5); }
+    if (W === 'bow') weapon(c, W, hx + 2, hyy - 4, victory ? -0.9 : attack ? 0.4 : 0, t);
     c.restore();
   }
 
@@ -364,6 +369,64 @@ const Sprites = (() => {
     limb(c, 0, 26, 0, -40, '#6b4a2a', 3); poly(c, [-4, -40, 0, -52, 4, -40]); fs(c, '#d7dee6'); c.restore();
     limb(c, -12, -46 + b, -20, -40 + b, '#c9a45a', 5);
   };
+  MON.monkey = (c, t) => {
+    const b = Math.abs(Math.sin(t * 5)) * 3;
+    c.beginPath(); c.moveTo(8, -14 - b); c.bezierCurveTo(30, -8, 32, -40, 18, -40); c.strokeStyle = OUT; c.lineWidth = 5; c.stroke(); c.strokeStyle = '#8a5a30'; c.lineWidth = 3; c.stroke();
+    rr(c, -9, -12 - b, 7, 12, 3); fs(c, '#7a4a22'); rr(c, 3, -12 - b, 7, 12, 3); fs(c, '#7a4a22');
+    ell(c, 0, -22 - b, 12, 13); fs(c, '#8a5a30');
+    ell(c, -2, -20 - b, 7, 8); fs(c, '#e8c49a', null);
+    circ(c, -14, -44 - b, 5); fs(c, '#e8c49a'); circ(c, 10, -44 - b, 5); fs(c, '#e8c49a');
+    circ(c, -2, -42 - b, 12); fs(c, '#8a5a30');
+    ell(c, -4, -39 - b, 8, 7); fs(c, '#f0d2a8');
+    circ(c, -7, -43 - b, 1.8); fs(c, OUT, null); circ(c, -1, -43 - b, 1.8); fs(c, OUT, null);
+    c.beginPath(); c.arc(-4, -37 - b, 3, 0.1, Math.PI - 0.1); c.strokeStyle = OUT; c.lineWidth = 1.3; c.stroke();
+    limb(c, 8, -28 - b, 14, -18 - b, '#8a5a30', 4);
+    limb(c, -8, -28 - b, -18, -40 - b, '#8a5a30', 4);
+    circ(c, -20, -47 - b, 7); fs(c, '#6b4a22'); circ(c, -22, -49 - b, 1.3); fs(c, '#3a2412', null); circ(c, -18, -49 - b, 1.3); fs(c, '#3a2412', null);
+  };
+  MON.tiger = (c, t) => {
+    const b = Math.sin(t * 5) * 1.5;
+    c.beginPath(); c.moveTo(26, -28); c.quadraticCurveTo(48, -32 + b, 44, -50 + b); c.strokeStyle = OUT; c.lineWidth = 7; c.stroke(); c.strokeStyle = '#f08a24'; c.lineWidth = 4.5; c.stroke();
+    [[-16, 0], [-6, 1], [12, 0], [22, 1]].forEach(([lx, k]) => { rr(c, lx - 3.5, -20, 7, 20 + (k ? b * 0.5 : -b * 0.5), 3); fs(c, '#e07a1a'); });
+    ell(c, 4, -27, 29, 14); fs(c, '#f08a24');
+    ell(c, 4, -18, 20, 5); c.fillStyle = '#fff4e0'; c.fill();
+    for (let i = -14; i <= 24; i += 8) { c.beginPath(); c.moveTo(i, -40); c.quadraticCurveTo(i + 4, -30, i, -22); c.strokeStyle = OUT; c.lineWidth = 2.5; c.stroke(); }
+    circ(c, -24, -36, 13); fs(c, '#f08a24');
+    c.beginPath(); c.arc(-30, -47, 5, Math.PI, TAU); c.closePath(); fs(c, '#f08a24'); c.beginPath(); c.arc(-17, -47, 5, Math.PI, TAU); c.closePath(); fs(c, '#f08a24');
+    ell(c, -33, -31, 9, 6.5); fs(c, '#fff4e0');
+    poly(c, [-40, -34, -36, -34, -38, -31]); fs(c, '#3a2412', null);
+    ell(c, -28, -39, 2.6, 2.2); fs(c, '#b9e04a', OUT, 1); circ(c, -28.5, -39, 1); fs(c, OUT, null);
+    line(c, -22, -46, -20, -40, OUT, 2); line(c, -16, -44, -16, -38, OUT, 2);
+    poly(c, [-38, -27, -36, -23, -34, -27]); fs(c, '#fff', OUT, 0.8);
+  };
+  MON.wyrm = (c, t) => {
+    const sway = Math.sin(t * 2) * 6;
+    ell(c, 0, -2, 34, 9); fs(c, '#d9b066');
+    for (let i = 0; i < 6; i++) {
+      const k = i / 5, x = sway * k * k - 14 * k, y = -10 - i * 13;
+      circ(c, x, y, 16 - i * 1.3); fs(c, i % 2 ? '#b88a4a' : '#c89a5a');
+    }
+    const hx = sway - 22, hy = -84;
+    circ(c, hx, hy, 15); fs(c, '#a0763a');
+    ell(c, hx - 9, hy + 3, 7, 10); fs(c, '#5a1a1a');
+    for (let i = 0; i < 4; i++) { poly(c, [hx - 13 + i * 3, hy - 5 + i * 5, hx - 9 + i * 3, hy - 3 + i * 5, hx - 12 + i * 3, hy - 1 + i * 5]); fs(c, '#fff', null); }
+    circ(c, hx + 2, hy - 7, 2.4); fs(c, '#ff3b2f', OUT, 1); circ(c, hx + 8, hy - 5, 2); fs(c, '#ff3b2f', OUT, 1);
+    for (let i = 0; i < 3; i++) { const p = (t * 0.7 + i / 3) % 1; circ(c, -20 + i * 18, -4 - p * 16, 2 + p * 2); c.fillStyle = `rgba(217,176,102,${1 - p})`; c.fill(); }
+  };
+  MON.golem = (c, t) => {
+    const b = Math.sin(t * 2) * 1, pulse = 0.6 + Math.sin(t * 4) * 0.3;
+    rr(c, -18, -26, 14, 26, 3); fs(c, '#3a2a2e'); rr(c, 4, -26, 14, 26, 3); fs(c, '#3a2a2e');
+    poly(c, [-26, -24 + b, -30, -62 + b, -14, -80 + b, 14, -82 + b, 30, -62 + b, 26, -24 + b]); fs(c, '#4a3a3e');
+    glow(c, 0, -50 + b, 30, '#ff7a2a', 0.35 * pulse);
+    c.beginPath(); c.moveTo(-18, -70 + b); c.lineTo(-6, -58 + b); c.lineTo(-12, -44 + b); c.lineTo(2, -32 + b); c.moveTo(10, -74 + b); c.lineTo(4, -60 + b); c.lineTo(16, -48 + b);
+    c.strokeStyle = `rgba(255,140,40,${pulse})`; c.lineWidth = 3; c.stroke();
+    circ(c, -34, -42 + b, 11); fs(c, '#4a3a3e'); circ(c, 32, -46 + b, 11); fs(c, '#4a3a3e');
+    line(c, -38, -44 + b, -30, -40 + b, '#ff8a2a', 2); line(c, 28, -48 + b, 36, -44 + b, '#ff8a2a', 2);
+    rr(c, -11, -98 + b, 22, 18, 6); fs(c, '#3a2a2e');
+    glow(c, -4, -90 + b, 6, '#ffb03a', 1); glow(c, 5, -90 + b, 6, '#ffb03a', 1);
+    ell(c, -4, -90 + b, 2.6, 1.8); fs(c, '#fff2a0', null); ell(c, 5, -90 + b, 2.6, 1.8); fs(c, '#fff2a0', null);
+    for (let i = 0; i < 2; i++) { const p = (t * 0.5 + i / 2) % 1; circ(c, -20 + i * 38, -30 + p * 28, 2.5); c.fillStyle = `rgba(255,120,40,${1 - p})`; c.fill(); }
+  };
   MON.demonlord = (c, t, o) => {
     const form = (o && o.form) || 1;
     const cape = form === 1 ? '#4b2378' : form === 2 ? '#8e1328' : '#16060a';
@@ -388,7 +451,9 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(-7, -101 + b); c.lineTo(7, -101 + b); c.strokeStyle = '#1a0a10'; c.lineWidth = 2; c.stroke();
     poly(c, [-5, -101 + b, -4, -97 + b, -3, -101 + b]); fs(c, '#fff', null); poly(c, [3, -101 + b, 4, -97 + b, 5, -101 + b]); fs(c, '#fff', null);
   };
-  const MON_H = { slime: 40, wolf: 56, kongkoi: 74, mushroom: 66, scorpion: 60, mummy: 72, shadow: 82, deathknight: 80, minion: 50, ironfang: 102, dryad: 92, sandgeneral: 90, demonlord: 150 };
+  const MON_H = { slime: 40, wolf: 56, monkey: 60, kongkoi: 74, mushroom: 66, tiger: 62, scorpion: 60, mummy: 72, wyrm: 104, shadow: 82, deathknight: 80, golem: 104, minion: 50, ironfang: 102, dryad: 92, sandgeneral: 90, demonlord: 150 };
+  /* Emoji bursts that go with each class's victory pose. */
+  const VICTORY_FX = { commoner: '✨', warlord: '💢', shaman: '🔥', archmage: '💬', slingshot: '⭐', bowlord: '🏹', isan: '🍙', gambler: '🪙', templekid: '🙏' };
   const ARMY_SPRITE = { minion: 'minion', B01: 'ironfang', B02: 'dryad', B03: 'sandgeneral', B04: 'demonlord' };
 
   function drawMonster(c, key, x, y, s, o) {
@@ -624,7 +689,7 @@ const Sprites = (() => {
     } else {
       const h = MON_H[kind] || 70;
       const sc = size / (h * 0.8);
-      const ox = kind === 'wolf' || kind === 'scorpion' ? size * 0.1 : 0;
+      const ox = kind === 'wolf' || kind === 'scorpion' || kind === 'tiger' ? size * 0.1 : 0;
       drawMonster(c, kind, size / 2 + ox, size * 0.98 + (h > 90 ? h * 0.18 * sc : 0), sc, { t: 0, form: o.form });
     }
     const url = cv.toDataURL();
@@ -636,6 +701,6 @@ const Sprites = (() => {
   return {
     drawHero, drawMonster, drawNPC, drawBuilding, drawChest, drawFlag, drawDecor, shadow, glow, emoji,
     rr, circ, ell, poly, fs, line,
-    portrait, heroPortrait, MON_H, ARMY_SPRITE, FLAT_DECOR, OUT,
+    portrait, heroPortrait, MON_H, ARMY_SPRITE, FLAT_DECOR, OUT, VICTORY_FX,
   };
 })();

@@ -10,7 +10,7 @@ const Save = (() => {
     records: PREFIX + 'records',
   };
   const SLOTS = 4;
-  const DEFAULT_SETTINGS = { schema: 1, musicVolume: 0.5, sfxVolume: 0.7, botSpeed: 2, showTips: true };
+  const DEFAULT_SETTINGS = { schema: 2, musicVolume: 0.5, sfxVolume: 0.7, speed: 1, showTips: true };
   const DEFAULT_RECORDS = { schema: 1, gamesPlayed: 0, wins: 0, bestStars: 0, endings: { good: false, bad: false, secret: false }, history: [] };
 
   let memory = {};                      // fallback when localStorage is blocked (private mode etc.)
@@ -58,11 +58,9 @@ const Save = (() => {
       s.players.length === DATA.NUM_PLAYERS && typeof s.day === 'number' && typeof s.turn === 'number' &&
       s.army && s.head && Array.isArray(s.battles);
   }
-  function migrate(record) {
-    // v1 is the first schema; future versions upgrade `record.state` here before validation.
-    if (record.state && !record.state.rules) record.state.rules = Object.assign({}, DATA.RULES_DEFAULT);
-    return record;
-  }
+  /* v2 replaced the whole map (new space ids), so v1 saves cannot be upgraded; they are listed as
+   * "older version". Future schema bumps upgrade `record.state` here before validation. */
+  function migrate(record) { return record; }
   function unpack(record) {
     if (!record || !record.state) return null;
     record = migrate(record);
@@ -74,13 +72,14 @@ const Save = (() => {
     available: storageOk,
 
     loadSettings() { return Object.assign({}, DEFAULT_SETTINGS, read(K.settings) || {}); },
-    saveSettings(s) { return write(K.settings, Object.assign({}, DEFAULT_SETTINGS, s, { schema: 1 })); },
+    saveSettings(s) { return write(K.settings, Object.assign({}, DEFAULT_SETTINGS, s, { schema: DEFAULT_SETTINGS.schema })); },
 
     listSlots() {
       const out = [];
       for (let i = 1; i <= SLOTS; i++) {
         const rec = read(K.slot(i));
-        out.push({ slot: i, meta: rec && rec.meta ? rec.meta : null, corrupt: !!rec && !unpack(U.clone(rec)) });
+        const outdated = !!rec && rec.schema !== DATA.SAVE_SCHEMA;
+        out.push({ slot: i, meta: rec && rec.meta ? rec.meta : null, outdated, corrupt: !!rec && !outdated && !unpack(U.clone(rec)) });
       }
       return out;
     },

@@ -12,41 +12,63 @@ const MapSys = (() => {
   const edges = [];          // {a, b, pts:[[x,y]...], bridge}
 
   /* ================================================================ graph */
-  function link(a, b) {
+  function link(a, b, style) {
     if (!spaces[a] || !spaces[b]) throw new Error(`Bad map link ${a}–${b}`);
     if (spaces[a].links.includes(b)) return;
     spaces[a].links.push(b); spaces[b].links.push(a);
     const key = `${a}|${b}`, rkey = `${b}|${a}`;
     let wp = DATA.LINK_WAYPOINTS[key] || (DATA.LINK_WAYPOINTS[rkey] ? DATA.LINK_WAYPOINTS[rkey].slice().reverse() : null);
     const pts = [[spaces[a].x, spaces[a].y]].concat((wp || []).map(([c, r]) => [c * CELL, r * CELL]), [[spaces[b].x, spaces[b].y]]);
-    const bridge = spaces[a].zone !== spaces[b].zone && Math.hypot(spaces[a].col - spaces[b].col, spaces[a].row - spaces[b].row) > 2;
-    edges.push({ a, b, pts, bridge, zone: spaces[a].zone });
+    edges.push({ a, b, pts, bridge: style === 'bridge', zone: spaces[a].zone });
   }
   function build() {
     const pending = [];
     for (const z of DATA.ZONES) {
       const L = z.layout;
+      const codeAt = (li, col) => {
+        const line = L[li] || '', code = line.substr(col * 5, 3);
+        if (!/^[etBL]\d\d$/.test(code)) throw new Error(`Zone ${z.id}: connector on line ${li} has no space at column ${col}`);
+        return `${z.id}-${code}`;
+      };
       for (let li = 0; li < L.length; li += 2) {
         const line = L[li], row = li / 2;
         for (let c = 0; c * 5 < line.length; c++) {
           const code = line.substr(c * 5, 3);
           if (!/^[etBL]\d\d$/.test(code)) continue;
           const id = `${z.id}-${code}`, col = c + z.offset[0], r = row + z.offset[1];
+          if (spaces[id]) throw new Error(`Duplicate space ${id}`);
           spaces[id] = { id, code, zone: z.id, type: code[0], col, row: r, x: col * CELL, y: r * CELL, links: [] };
           list.push(spaces[id]);
-          if (line.substr(c * 5 + 3, 2) === '──') pending.push([id, `${z.id}-${line.substr(c * 5 + 5, 3)}`]);
+          if (line.substr(c * 5 + 3, 2) === '──') pending.push([id, codeAt(li, c + 1)]);
         }
       }
+      // A vertical connector may sit under the first or the middle character of a code.
       for (let li = 1; li < L.length; li += 2) {
         const line = L[li];
         for (let i = 0; i < line.length; i++) {
           if (line[i] !== '│') continue;
-          pending.push([`${z.id}-${L[li - 1].substr(i, 3)}`, `${z.id}-${L[li + 1].substr(i, 3)}`]);
+          if (i % 5 > 2) throw new Error(`Zone ${z.id}: connector on line ${li} at char ${i} is between columns`);
+          const col = Math.floor(i / 5);
+          pending.push([codeAt(li - 1, col), codeAt(li + 1, col)]);
         }
       }
     }
-    for (const [a, b] of pending.concat(DATA.CROSS_LINKS, DATA.EXTRA_LINKS)) link(a, b);
+    for (const [a, b, style] of pending.concat(DATA.CROSS_LINKS, DATA.EXTRA_LINKS)) link(a, b, style);
     for (const sp of list) sp.dirs = computeDirs(sp);
+    computeDepth();
+  }
+  /* depth 0..1 = how far a space lies between the zone entrance and its General (picks monster tiers). */
+  function computeDepth() {
+    for (const z of DATA.ZONES) {
+      const inZone = id => spaces[id].zone === z.id;
+      const field = from => {
+        const d = { [from]: 0 }, q = [from];
+        while (q.length) { const c = q.shift(); for (const n of spaces[c].links) if (inZone(n) && !(n in d)) { d[n] = d[c] + 1; q.push(n); } }
+        return d;
+      };
+      const dE = field(`${z.id}-${z.entry}`), dB = field(`${z.id}-${z.boss}`);
+      for (const sp of list) if (sp.zone === z.id) sp.depth = (dE[sp.id] || 0) / Math.max(1, (dE[sp.id] || 0) + (dB[sp.id] || 0));
+    }
   }
 
   /* Map each neighbour to one of W/A/S/D by screen direction (unique per space). */
@@ -66,18 +88,29 @@ const MapSys = (() => {
     return out;
   }
 
-  /* Reachable stops for a roll: shortest simple route to every space within `steps`.
-   * Blocking spaces may be stopped on but not passed through. Returns Map id -> [start..id]. */
-  function reachable(start, steps, isBlocking) {
-    const dist = { [start]: 0 }, prev = { [start]: null }, q = [start], out = new Map();
-    while (q.length) {
-      const cur = q.shift();
-      if (dist[cur] >= steps) continue;
-      if (cur !== start && isBlocking(cur)) continue;
-      for (const n of spaces[cur].links) if (!(n in dist)) { dist[n] = dist[cur] + 1; prev[n] = cur; q.push(n); }
-    }
-    for (const id in dist) if (id !== start) out.set(id, pathOf(prev, id));
-    return out;
+  /* Exact-step movement (spec §3.2): walk exactly `steps` more spaces from the end of `prefix`
+   * (a simple path that starts at the mover's space) without visiting any space twice.
+   * Stepping onto a blocking space (undefeated General / Demon Lord's Castle) ends the move there.
+   * Returns { ends: Map(endpoint -> full path), next: Set(first steps that can still finish) }.
+   * The search is capped so huge multi-dice rolls stay fast. */
+  function exactMoves(prefix, steps, isBlocking, cap) {
+    const ends = new Map(), next = new Set();
+    const path = prefix.slice(), onPath = new Set(path), base = path.length;
+    let budget = cap || 300000;
+    const last = path[path.length - 1];
+    if (path.length > 1 && isBlocking(last)) { ends.set(last, path.slice()); return { ends, next }; }
+    if (steps <= 0) { if (path.length > 1) ends.set(last, path.slice()); return { ends, next }; }
+    const found = () => { if (!ends.has(path[path.length - 1])) ends.set(path[path.length - 1], path.slice()); next.add(path[base]); };
+    (function dfs(cur, left) {
+      for (const n of spaces[cur].links) {
+        if (onPath.has(n) || --budget < 0) continue;
+        path.push(n); onPath.add(n);
+        if (isBlocking(n) || left === 1) found();
+        else dfs(n, left - 1);
+        path.pop(); onPath.delete(n);
+      }
+    })(last, steps);
+    return { ends, next };
   }
   function pathOf(prev, id) { const p = []; for (let c = id; c != null; c = prev[c]) p.unshift(c); return p; }
 
@@ -137,9 +170,9 @@ const MapSys = (() => {
       const minR = Math.min(...nodes.map(n => n.row)), maxR = Math.max(...nodes.map(n => n.row));
       zoneCenter[z.id] = [(minC + maxC) / 2 * CELL, (minR + maxR) / 2 * CELL];
       for (const n of nodes) land[z.id].push([n.x, n.y, 100]);
-      for (let c = minC; c <= maxC; c += 0.5) for (let r = minR; r <= maxR; r += 0.5) {
-        const near = nodes.some(n => Math.hypot(n.col - c, n.row - r) <= 1.15);
-        if (near) land[z.id].push([c * CELL, r * CELL, 78]);
+      for (let c = minC; c <= maxC; c += 1) for (let r = minR; r <= maxR; r += 1) {
+        const near = nodes.some(n => Math.hypot(n.col - c, n.row - r) <= 1.5);
+        if (near) land[z.id].push([c * CELL, r * CELL, 96]);
       }
     }
     for (const e of edges) {
@@ -147,7 +180,7 @@ const MapSys = (() => {
       const zone = e.zone;
       for (let i = 0; i < e.pts.length - 1; i++) {
         const [ax, ay] = e.pts[i], [bx, by] = e.pts[i + 1], len = Math.hypot(bx - ax, by - ay);
-        for (let d = 0; d <= len; d += 40) land[zone].push([ax + (bx - ax) * d / len, ay + (by - ay) * d / len, 70]);
+        for (let d = 0; d <= len; d += 60) land[zone].push([ax + (bx - ax) * d / len, ay + (by - ay) * d / len, 72]);
       }
     }
     const KINDS = {
@@ -159,8 +192,9 @@ const MapSys = (() => {
     const rnd = U.seeded(20260928);
     for (const z of DATA.ZONES) {
       const circles = land[z.id];
+      const want = Math.round(list.filter(sp => sp.zone === z.id).length * 2.2);
       let placed = 0, tries = 0;
-      while (placed < 95 && tries < 2500) {
+      while (placed < want && tries < 6000) {
         tries++;
         const c = circles[Math.floor(rnd() * circles.length)];
         const a = rnd() * Math.PI * 2, d = rnd() * c[2] * 0.95;
@@ -176,7 +210,7 @@ const MapSys = (() => {
       }
     }
     // A landmark pyramid in the desert (placed clear of spaces and roads).
-    decor.push({ x: 16.6 * CELL, y: 2.45 * CELL, kind: 'pyramid', v: 0.5, zone: 3, flat: false, scale: 1.1 });
+    decor.push({ x: 17.5 * CELL, y: -0.05 * CELL, kind: 'pyramid', v: 0.5, zone: 3, flat: false, scale: 1.2 });
   }
 
   /* ================================================================ camera & projection */
@@ -246,8 +280,8 @@ const MapSys = (() => {
   }
 
   /* ================================================================ rendering */
-  const overlay = { reach: null, blocking: null, route: null, selected: null, arrows: null, markers: false, pathSet: null };
-  function setOverlay(o) { Object.assign(overlay, { reach: null, blocking: null, route: null, selected: null, arrows: null, markers: false, pathSet: null }, o || {}); }
+  const overlay = { reach: null, blocking: null, route: null, selected: null, arrows: null, markers: false, pathSet: null, dests: null };
+  function setOverlay(o) { Object.assign(overlay, { reach: null, blocking: null, route: null, selected: null, arrows: null, markers: false, pathSet: null, dests: null }, o || {}); }
 
   function drawSea(c, t) {
     const g = c.createLinearGradient(0, 0, 0, H);
@@ -265,22 +299,39 @@ const MapSys = (() => {
       }
     }
   }
-  function landPath(c, circles, grow, dz) {
+  /* Land is static: it is drawn once into an offscreen canvas (world-projected) and blitted each frame. */
+  let landCache = null;
+  function landPath(c, circles, grow, dz, P) {
     c.beginPath();
     for (const [x, y, r] of circles) {
-      const R = (r + grow) * cam.zoom;
-      const X = sx(x), Y = sy(y) + dz * cam.zoom;
-      if (X + R < 0 || X - R > W || Y + R < -40 || Y - R * TILT > H + 60) continue;
+      const R = (r + grow) * P.k, X = P.x(x), Y = P.y(y) + dz * P.k;
       c.moveTo(X + R, Y); c.ellipse(X, Y, R, R * TILT, 0, 0, Math.PI * 2);
     }
   }
-  function drawLand(c, t) {
-    for (const z of [1, 2, 3, 4]) { landPath(c, land[z], 16, 8); c.fillStyle = `rgba(255,255,255,${0.25 + Math.sin(t * 1.5) * 0.06})`; c.fill(); }
-    for (const z of [1, 2, 3, 4]) { landPath(c, land[z], 0, CLIFF); c.fillStyle = ZCOL[z].cliff; c.fill(); }
+  function paintLand(c, P) {
+    for (const z of [1, 2, 3, 4]) { landPath(c, land[z], 16, 8, P); c.fillStyle = 'rgba(255,255,255,0.28)'; c.fill(); }
+    for (const z of [1, 2, 3, 4]) { landPath(c, land[z], 0, CLIFF, P); c.fillStyle = ZCOL[z].cliff; c.fill(); }
     for (const z of [1, 2, 3, 4]) {
-      landPath(c, land[z], 0, 0); c.fillStyle = ZCOL[z].top; c.fill();
-      landPath(c, land[z], -14, 4); c.fillStyle = ZCOL[z].dark; c.globalAlpha = 0.25; c.fill(); c.globalAlpha = 1;
+      landPath(c, land[z], 0, 0, P); c.fillStyle = ZCOL[z].top; c.fill();
+      landPath(c, land[z], -14, 4, P); c.fillStyle = ZCOL[z].dark; c.globalAlpha = 0.25; c.fill(); c.globalAlpha = 1;
     }
+  }
+  function buildLandCache() {
+    if (typeof document === 'undefined') return;
+    const b = bounds(), pad = 200;
+    const x0 = b.x0 - pad, x1 = b.x1 + pad, y0 = b.y0 - pad, y1 = b.y1 + pad;
+    const scale = Math.min(1, 4096 / (x1 - x0));
+    const cv = document.createElement('canvas');
+    cv.width = Math.ceil((x1 - x0) * scale);
+    cv.height = Math.ceil(((y1 - y0) * TILT + CLIFF + 40) * scale);
+    paintLand(cv.getContext('2d'), { x: wx => (wx - x0) * scale, y: wy => (wy - y0) * TILT * scale, k: scale });
+    landCache = { cv, x0, y0, scale };
+  }
+  function drawLand(c) {
+    if (!landCache) buildLandCache();
+    if (!landCache) return;
+    const L = landCache, k = cam.zoom / L.scale;
+    c.drawImage(L.cv, sx(L.x0), sy(L.y0), L.cv.width * k, L.cv.height * k);
   }
   function drawRoads(c) {
     for (const e of edges) {
@@ -406,8 +457,12 @@ const MapSys = (() => {
       objs.push({ y: pos.y + 0.5, draw: () => {
         const X = sx(pos.x), Y = sy(pos.y, TILE_H);
         Sprites.shadow(c, X, Y, 15 * z, 5 * z);
-        Sprites.drawHero(c, X, sy(pos.y, TILE_H + pos.z), z * 0.8, { classId: p.classId, gender: p.gender, color: p.color, t: t + p.id, walk: pos.walk, facing: pos.dir < 0 ? -1 : 1 });
-        if (p.battleId) Sprites.emoji(c, '⚔️', X + 14 * z, sy(pos.y, TILE_H + 62), 16 * z);
+        Sprites.drawHero(c, X, sy(pos.y, TILE_H + pos.z), z * 0.8, { classId: p.classId, gender: p.gender, color: p.color, t: t + p.id, walk: pos.walk, facing: pos.dir < 0 ? -1 : 1, alpha: p.down ? 0.55 : null, pose: p.down ? 'hurt' : null });
+        if (p.down) Sprites.emoji(c, p.downReason === 'ko' ? '🪦' : '😵', X + 14 * z, sy(pos.y, TILE_H + 62 + Math.sin(t * 3) * 2), 16 * z);
+        else if (p.battleId) {
+          const b = state.battles.find(x => x.id === p.battleId);
+          Sprites.emoji(c, b && b.kind === 'duel' ? '🤺' : '⚔️', X + 14 * z, sy(pos.y, TILE_H + 62), 16 * z);
+        }
         if (state.head.holder === p.id) Sprites.emoji(c, '💀', X - 14 * z, sy(pos.y, TILE_H + 62 + Math.sin(t * 4) * 2), 15 * z);
         if (p === cur) {
           const bob = Math.sin(t * 5) * 4;
@@ -441,6 +496,21 @@ const MapSys = (() => {
       c.save(); c.font = `800 ${Math.round(13 * cam.zoom)}px system-ui,sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillStyle = '#2b1a0e'; Sprites.rr(c, X - 9 * cam.zoom, Y - 26 * cam.zoom, 18 * cam.zoom, 16 * cam.zoom, 4 * cam.zoom); c.fill();
       c.fillStyle = '#fff'; c.fillText(k, X, Y - 18 * cam.zoom); c.restore();
+    }
+  }
+  /* Exact-step destinations: a little goal flag bobbing over every space the move can end on. */
+  function drawDests(c, t) {
+    if (!overlay.dests) return;
+    const z = Math.max(cam.zoom, 0.55);
+    for (const id of overlay.dests) {
+      if (id === overlay.selected) continue;
+      const sp = spaces[id], X = sx(sp.x) + 22 * cam.zoom, Y = sy(sp.y, TILE_H + 26 + Math.sin(t * 5 + sp.x) * 4);
+      if (X < -40 || X > W + 40 || Y < -60 || Y > H + 40) continue;
+      c.save();
+      Sprites.line(c, X, Y, X, Y + 22 * z, '#3b2412', 2.5 * z);
+      Sprites.poly(c, [X, Y, X + 16 * z, Y + 5 * z, X, Y + 10 * z]);
+      Sprites.fs(c, overlay.blocking && overlay.blocking.has(id) ? '#ff4a3a' : '#ffd36a', '#3b2412', 2);
+      c.restore();
     }
   }
   /* Auto-Move / picker selection: bouncing arrow + space-type label above the chosen space. */
@@ -504,7 +574,7 @@ const MapSys = (() => {
     updateCam(dt);
     const now = performance.now();
     drawSea(c, t);
-    drawLand(c, t);
+    drawLand(c);
     drawFlatDecor(c);
     drawRoads(c);
     if (state) {
@@ -512,6 +582,7 @@ const MapSys = (() => {
       drawRoute(c, t);
       drawObjects(c, state, t, now);
       drawArrows(c, state, t);
+      drawDests(c, t);
       drawMarkers(c, state, t);
       drawSelection(c, state, t);
     }
@@ -537,7 +608,7 @@ const MapSys = (() => {
 
   return {
     spaces, list, edges, CELL, TILT,
-    reachable, distField, bfs, graphDist, spaceName,
+    exactMoves, distField, bfs, graphDist, spaceName,
     initScenery() { if (!decor.length) buildScenery(); },
     render, setViewport, setMode, focus, follow, pan, zoomBy, pick, screenPos, walk, actorPos, minionPos,
     setOverlay, overlay, cam,
