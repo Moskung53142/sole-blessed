@@ -14,6 +14,36 @@ const Sound = (() => {
     return 440 * Math.pow(2, (midi - 69) / 12);
   }
 
+  /* iPhone/iPad: Web Audio obeys the ring/silent switch unless the page's audio session is
+   * "playback" (like a music app). Safari 16.4+ exposes navigator.audioSession for that; older iOS
+   * switches the session while an HTML <audio> element plays, so loop a silent clip made in code. */
+  const IOS = typeof navigator !== 'undefined' &&
+    (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+  let silentTag = null;
+  function silentClip() {
+    const n = 4000, bytes = new Uint8Array(44 + n), v = new DataView(bytes.buffer);   // 0.5 s, 8 kHz, 8-bit mono WAV
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) bytes[o + i] = s.charCodeAt(i); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+    str(36, 'data'); v.setUint32(40, n, true);
+    bytes.fill(128, 44);                                    // 128 = silence in 8-bit PCM
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  function playbackSession() {
+    try { if (navigator.audioSession) { navigator.audioSession.type = 'playback'; return; } } catch (e) { /* unsupported */ }
+    if (!IOS || document.hidden) return;
+    if (!silentTag) {
+      silentTag = document.createElement('audio');
+      silentTag.setAttribute('x-webkit-airplay', 'deny');
+      silentTag.preload = 'auto'; silentTag.loop = true; silentTag.src = silentClip();
+    }
+    if (silentTag.paused) { const r = silentTag.play(); if (r && r.catch) r.catch(() => {}); }
+  }
+
+  let primed = false;
   function ensure() {
     if (!ctx) {
       const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
@@ -23,8 +53,21 @@ const Sound = (() => {
       musicBus = ctx.createGain(); musicBus.gain.value = musicVol * 0.35; musicBus.connect(master);
       sfxBus = ctx.createGain(); sfxBus.gain.value = sfxVol * 0.6; sfxBus.connect(master);
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    // iOS can also leave the context "interrupted" (calls, app switches), not just "suspended".
+    if (ctx.state !== 'running' && ctx.state !== 'closed') { const r = ctx.resume(); if (r && r.catch) r.catch(() => {}); }
+    if (!primed) {
+      // Older iOS only unlocks Web Audio once something has been played inside the gesture.
+      primed = true;
+      const s = ctx.createBufferSource();
+      s.buffer = ctx.createBuffer(1, 1, 22050); s.connect(ctx.destination); s.start(0);
+    }
     return true;
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { if (silentTag) silentTag.pause(); }
+      else if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') { const r = ctx.resume(); if (r && r.catch) r.catch(() => {}); }
+    });
   }
 
   function tone(bus, f, t, dur, type, vol, slideTo) {
@@ -152,8 +195,15 @@ const Sound = (() => {
   };
 
   return {
-    /* Browsers only allow audio after a user gesture; call this from input handlers. */
-    unlock() { if (ensure() && trackName && !track) this.music(trackName, true); },
+    /* Browsers only allow audio after a user gesture (iOS: a finished tap or a key, not touchstart);
+     * main.js calls this on every tap/click/key. Cheap to call repeatedly. */
+    unlock() {
+      try {
+        playbackSession();
+        if (ensure() && trackName && !track) this.music(trackName, true);
+      } catch (e) { /* audio must never break the game */ }
+    },
+    get state() { return ctx ? ctx.state : 'none'; },
     setVolumes(m, s) {
       musicVol = m; sfxVol = s;
       if (musicBus) musicBus.gain.value = m * 0.35;

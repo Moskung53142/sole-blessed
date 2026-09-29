@@ -15,7 +15,8 @@
 - Pure HTML, CSS, and JavaScript; no external libraries. Separate files by system
 (data.js stores all game data, map.js, battle.js, ui.js, bot.js, save.js).
 - Draw with Canvas in an angled (2.5D) view; do not use external image or sound files
-Graphics are drawn with code or emojis; sound uses the Web Audio API.
+Graphics are drawn with code or emojis; sound uses the Web Audio API. Sound starts on the first tap, click or key press anywhere
+(browsers block audio before that). On iPhone/iPad the game plays sound even with the ring/silent switch on silent, like a video; use the volume sliders to mute it.
 - Save the game with localStorage, supporting computers and mobile devices.
 - UI: cream-colored frames, orange-gold borders, rounded corners, cartoon style, centered modal windows, darkened background.
 - Every button can be clicked/tapped and has a shortcut-key label. Disabled buttons are gray and explain why

@@ -76,6 +76,9 @@
 
   /* Keep the page from scrolling/zooming on mobile while playing. */
   document.addEventListener('gesturestart', e => e.preventDefault());
+  // Audio may only start inside a user gesture. iOS counts a finished tap (touchend / click) or a key,
+  // not pointerdown, so unlock on those anywhere on the page (capture: runs even if a handler stops propagation).
+  for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, () => Sound.unlock(), { capture: true, passive: true });
 
   Sound.setVolumes(UI.settings.musicVolume, UI.settings.sfxVolume);
   UI.showTitle();
