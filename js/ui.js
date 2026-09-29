@@ -532,7 +532,7 @@ const UI = (() => {
     if (!s || !S.inGame) return;
     const cur = Game.cur();
     const dl = $('#hud-day .day-label');
-    if (dl) dl.innerHTML = `Day <b>${s.day}</b> / ${Game.endless() ? '∞' : Game.maxDays()}`;
+    if (dl) dl.innerHTML = `<span class="dl-word">Day</span> <b>${s.day}</b> / ${Game.endless() ? '∞' : Game.maxDays()}`;
     const rq = $('#hud-request');
     if (rq) {
       const r = s.request;
@@ -732,9 +732,8 @@ const UI = (() => {
         btn('Auto-Move', 'I', () => setMode(m.mode === 'auto' ? 'manual' : 'auto'), { cls: 'small' }),
         btn('Status', 'O', () => openStatus(p, true), { cls: 'small' }),
         btn('Full Map', 'N', () => setMode(m.mode === 'full' ? 'manual' : 'full'), { cls: 'small' })),
-      h('div', { id: 'move-left', class: 'panel' }),
-      h('div', { id: 'move-info', class: 'panel' }),
-      h('div', { id: 'dpad' }, ['W', 'A', 'S', 'D'].map(k => h('button', { class: `dp dp-${k}`, type: 'button', onclick: e => { e.stopPropagation(); dir(k); } }, { W: '▲', A: '◀', S: '▼', D: '▶' }[k]))));
+      h('div', { id: 'move-bl' }, h('div', { id: 'move-info', class: 'panel' }), h('div', { id: 'move-left', class: 'panel' })),
+      h('div', { id: 'dpad' }, ['W', 'A', 'S', 'D'].map(k => h('button', { class: `dp dp-${k}`, type: 'button', onclick: e => { e.stopPropagation(); if (m.dir) m.dir(k); } }, { W: '▲', A: '◀', S: '▼', D: '▶' }[k]))));
     return new Promise(resolve => {
       function remaining() { return total - (m.path.length - 1); }
       function update() {

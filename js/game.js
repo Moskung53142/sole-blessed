@@ -58,13 +58,13 @@ const Game = {
   fightHere(p) {
     return this.state.battles.find(b => b.kind !== 'duel' && b.space === p.spaceId && !b.parts.includes(p.id) && (b.parts.length || b.reserve)) || null;
   },
-  /* Optional join at turn start (spec §3.2): only Demon Lord Army battles. */
+  /* Optional join at turn start (spec §3.2): only Demon Lord Army battles, never on the turn right after resting. */
   joinableBattle(p) {
-    if (p.battleId) return null;
+    if (p.battleId || p.justUp) return null;
     return this.state.battles.find(b => b.kind === 'army' && b.space === p.spaceId && b.parts.length && !b.parts.includes(p.id)) || null;
   },
-  /* Heroes knocked out / giving up rest; heroes in buildings are safe from fights. */
-  canBeChallenged(o) { return !o.battleId && !o.down && !this.isBuilding(o.spaceId); },
+  /* Heroes knocked out / giving up rest, and get a free roll once back (justUp); heroes in buildings are safe from fights. */
+  canBeChallenged(o) { return !o.battleId && !o.down && !o.justUp && !this.isBuilding(o.spaceId); },
   canSave() {
     const s = this.state;
     return !!s && !s.over && !this.cur().isBot && s.phase === 'preRoll' && !Battle.active && !this.cur().battleId;
@@ -118,7 +118,7 @@ const Game = {
       merit: 0, usedLarb: false, wentAllIn: false,
       buffs: { dice: 0, energy: false, eater: false },
       battleId: null, itemUsed: false, turnOver: false,
-      down: 0, downReason: null,
+      down: 0, downReason: null, justUp: false,
       record: { monsters: 0, heroesBeaten: 0, army: 0, treasures: 0, deaths: 0, requests: 0 },
       botMem: {},
     };
@@ -208,7 +208,8 @@ const Game = {
     else this.log(`😵 ${p.name} is still standing up… ${left ? `${left} more turn${left > 1 ? 's' : ''}` : 'back next turn'}.`, p);
     if (!this.sim) await UI.restTurn(p);
     await this.wait(700);
-    if (!p.down) p.downReason = null;
+    // Back on their feet: the next turn is a free roll (no join offer, no challenges, no minion ambush until it ends).
+    if (!p.down) { p.downReason = null; p.justUp = true; }
     this.state.phase = 'between';
     p.itemUsed = false; p.turnOver = false;
     if (!this.sim) UI.refresh();
@@ -240,6 +241,7 @@ const Game = {
     }
     p.itemUsed = false;
     p.turnOver = false;
+    p.justUp = false;
     this.state.phase = 'between';
     if (!this.sim) UI.refresh();
   },
@@ -559,7 +561,7 @@ const Game = {
     const s = this.state, m = s.minion;
     if (!m || this.armyBattle('minion')) return;
     const B = MapSys.bfs(m.spaceId, id => this.isBlocking(id));
-    const prey = p => !p.battleId && !p.down;
+    const prey = p => !p.battleId && !p.down && !p.justUp;
     const targets = s.players.filter(p => prey(p) && B.dist[p.spaceId] >= 1).sort((a, b) => B.dist[a.spaceId] - B.dist[b.spaceId]);
     if (!targets.length) return;
     const target = targets[0], path = B.path(target.spaceId);

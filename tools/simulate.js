@@ -44,6 +44,7 @@ function check(s, where) {
   for (const p of s.players) {
     if (p.down < 0 || p.down > DATA.DOWN_TURNS) fail(`${p.name} down=${p.down}`);
     if (p.down && p.battleId) fail(`${p.name} is resting but locked in battle`);
+    if (p.justUp && (p.down || p.battleId)) fail(`${p.name} was pulled into a fight before their free roll`);
   }
   if (s.minion && MapSys.spaces[s.minion.spaceId].type === 'L') fail('minion standing on a building');
   if (s.head.holder != null && s.head.space) fail('head both held and dropped');

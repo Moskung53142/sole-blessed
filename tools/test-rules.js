@@ -135,6 +135,24 @@ function wolfBattle(p) {
     eq('Resting heroes cannot be challenged', Game.canBeChallenged(q), false);
     eq('Minion respawns 2 days after a defeat', DATA.MINION_RESPAWN_DAYS, 2);
   }
+  /* ---- back on your feet: the next turn is a free roll (spec §4) ---- */
+  {
+    const p = fresh(), s = Game.state, [, ally, c, d] = s.players;
+    p.spaceId = ally.spaceId = '1-e03';
+    const b = Battle.create('army', '1-e03', 'B01', null);
+    Battle.addPart(b, ally, 'hero');
+    Game.giveUp(p); s.phase = 'between';
+    await Game.playTurn();
+    eq('standing up flags a free roll', [p.down, p.justUp], [0, true]);
+    eq('no join offer for an army fight on the same space', Game.joinableBattle(p), null);
+    eq('cannot be challenged before rolling', Game.canBeChallenged(p), false);
+    c.down = d.down = 1;
+    s.minion = { zone: 1, spaceId: MapSys.spaces['1-e03'].links[0], hp: 155, maxHp: 155, cd: { special: 0, specialDef: 0 } };
+    await Game.minionMove();
+    eq('the minion does not ambush a hero who has not rolled yet', [p.battleId, s.minion.spaceId], [null, MapSys.spaces['1-e03'].links[0]]);
+    await Game.endTurn(p);
+    eq('the free roll ends with the turn', [p.justUp, Game.joinableBattle(p) === b], [false, true]);
+  }
   /* ---- no items during a fight, first round or later (spec §6, §8.2) ---- */
   {
     const p = fresh(); Game.state.phase = 'preRoll';

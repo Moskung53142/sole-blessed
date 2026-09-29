@@ -606,9 +606,9 @@ const BattleView = (() => {
     el = document.getElementById('battle-hud');
     el.innerHTML = `
       <div class="bh-top">
-        <div class="bh-side L"><div class="lv-badge"></div><div class="bh-name"></div><div class="hpbar"><div class="fill"></div><span></span></div></div>
+        <div class="bh-side L"><div class="bh-head"><div class="lv-badge"></div><div class="bh-name"></div></div><div class="hpbar"><div class="fill"></div><span></span></div></div>
         <div class="bh-vs"><div class="vs-star">VS</div><div class="bh-round"></div></div>
-        <div class="bh-side R"><div class="lv-badge"></div><div class="bh-name"></div><div class="hpbar"><div class="fill"></div><span></span></div></div>
+        <div class="bh-side R"><div class="bh-head"><div class="lv-badge"></div><div class="bh-name"></div></div><div class="hpbar"><div class="fill"></div><span></span></div></div>
       </div>
       <div class="bh-allies"></div>
       <div class="bh-stats"></div>

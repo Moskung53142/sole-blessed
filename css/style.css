@@ -233,14 +233,17 @@ body[data-scene="battle"] #hud, body[data-scene="battle"] #move-hud { display: n
 
 /* movement */
 #move-cmds { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; padding: 4px; max-width: calc(100vw - 20px); }
-#move-left { position: absolute; left: 10px; bottom: 10px; padding: 10px 14px; min-width: 170px; text-align: center; font-weight: 800; }
+#move-bl { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: min(360px, calc(100vw - 20px)); pointer-events: none; }
+#move-bl > * { pointer-events: auto; }
+#move-left { padding: 10px 14px; min-width: 170px; text-align: center; font-weight: 800; }
+#move-hud > #move-left { position: absolute; left: 10px; bottom: 10px; }
 .big-num { font: 900 2.6rem/1 var(--font); color: #c0501a; }
-#move-info { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 8px 14px; display: none; text-align: center; max-width: 90vw; }
+#move-info { padding: 8px 14px; display: none; max-width: 100%; }
 #move-info.show { display: block; }
 #dpad { position: absolute; right: 14px; bottom: 70px; width: 150px; height: 150px; display: none; }
 .dp { position: absolute; width: 50px; height: 50px; font-size: 1.2rem; border-radius: 12px; border: 3px solid var(--gold); background: #fffaf0cc; box-shadow: 0 3px 0 var(--gold-d); color: var(--ink); }
 .dp-W { left: 50px; top: 0; } .dp-A { left: 0; top: 50px; } .dp-D { right: 0; top: 50px; } .dp-S { left: 50px; bottom: 0; }
-@media (pointer: coarse) { #dpad { display: block; } }
+@media (pointer: coarse) { #dpad { display: block; } #move-bl { max-width: calc(100vw - 186px); } }
 
 /* status */
 .st-head { display: flex; gap: 14px; align-items: center; }
@@ -345,12 +348,13 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
 #battle-hud { position: fixed; inset: 0; z-index: 12; display: none; pointer-events: none; }
 #battle-hud.show { display: block; }
 #battle-hud > * { pointer-events: auto; }
-.bh-top { position: absolute; top: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; pointer-events: none; }
-.bh-side { position: relative; padding: 8px 12px 8px 52px; background: linear-gradient(180deg, var(--cream), var(--cream-2)); border: 3px solid var(--gold); border-radius: 16px; box-shadow: var(--shadow); min-height: 58px; }
-.bh-side.R { padding: 8px 52px 8px 12px; text-align: right; }
-.lv-badge { position: absolute; top: 50%; transform: translateY(-50%); left: 6px; width: 40px; height: 40px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe58a, #e0a100); border: 3px solid #8a4b12; display: flex; align-items: center; justify-content: center; font: 900 1rem var(--font); color: #3b1f06; }
-.bh-side.R .lv-badge { left: auto; right: 6px; }
-.bh-name { font: 900 1rem var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bh-top { position: absolute; top: 8px; left: 8px; right: 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: start; pointer-events: none; }
+.bh-side { min-width: 0; padding: 8px 12px 10px; background: linear-gradient(180deg, var(--cream), var(--cream-2)); border: 3px solid var(--gold); border-radius: 16px; box-shadow: var(--shadow); }
+.bh-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; }
+.bh-side.R .bh-head { flex-direction: row-reverse; }
+.lv-badge { flex: none; width: 36px; height: 36px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe58a, #e0a100); border: 3px solid #8a4b12; display: flex; align-items: center; justify-content: center; font: 900 .95rem var(--font); color: #3b1f06; }
+.bh-name { flex: 1; min-width: 0; font: 900 1rem var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bh-side.R .bh-name { text-align: right; }
 .bh-side .hpbar { height: 18px; }
 .bh-side .hpbar span { line-height: 14px; font-size: .75rem; }
 .bh-vs { text-align: center; }
@@ -452,11 +456,13 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
   #hud-bl { bottom: 150px; }
 }
 @media (max-width: 720px) {
-  #hud-day { top: 8px; left: 8px; padding: 2px 4px 2px 10px; }
-  .day-label { font-size: .9rem; }
-  .day-label b { font-size: 1.1rem; }
-  #hud-day .btn.small { min-height: 32px; padding: .2em .45em; margin: .15em; }
-  #hud-active { top: 8px; right: 8px; left: 172px; width: auto; padding: 5px 8px 5px 5px; gap: 6px; }
+  #hud-day { top: 8px; left: 8px; padding: 2px 2px 2px 8px; gap: 2px; }
+  .day-label { font-size: .74rem; }
+  .day-label b { font-size: .95rem; }
+  #hud-day .btn.small { min-height: 30px; padding: .15em .4em; margin: .15em; }
+  #hud-day .pause-btn kbd { display: none; }
+  .dl-word { display: block; font-size: .56rem; line-height: 1; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+  #hud-active { top: 8px; right: 8px; left: 136px; width: auto; padding: 5px 8px 5px 5px; gap: 6px; }
   #hud-active .portrait { width: 44px; height: 44px; }
   .act-row { font-size: .7rem; } .act-class { display: none; }
   #hud-side { top: auto; bottom: 76px; transform: none; gap: 6px; left: 8px; }
@@ -473,7 +479,6 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
   #turn-label { bottom: 76px; right: 8px; font-size: .82rem; padding: 4px 10px; }
   #toast-root { top: 128px; }
   #move-cmds .btn.small { min-height: 34px; padding: .25em .5em; font-size: .8rem; margin: .15em; }
-  #move-info { top: auto; bottom: 170px; }
   #dpad { bottom: 120px; right: 8px; }
   .bh-cmd { width: 170px; height: 170px; bottom: 10px; }
   .bh-cmd.L { left: 6px; }
@@ -484,8 +489,13 @@ canvas.race { width: 100%; height: auto; border-radius: 12px; border: 3px solid 
   .bh-stats { top: 96px; width: 70vw; }
   .bh-info { top: 170px; }
   .bh-allies { top: 170px; }
-  .bh-side { padding-left: 44px; } .bh-side.R { padding-right: 44px; }
-  .lv-badge { width: 32px; height: 32px; font-size: .8rem; }
+  .bh-top { gap: 6px; left: 6px; right: 6px; }
+  .bh-side { padding: 6px 8px 8px; border-radius: 12px; }
+  .bh-head { gap: 5px; margin-bottom: 5px; }
+  .lv-badge { width: 26px; height: 26px; border-width: 2px; font-size: .72rem; }
+  .bh-name { font-size: .78rem; }
+  .bh-side .hpbar { height: 16px; }
+  .bh-side .hpbar span { line-height: 12px; font-size: .66rem; }
   .vs-star { width: 48px; height: 48px; font-size: 1rem; }
   .bh-wait { left: 50%; transform: translateX(-50%); bottom: 190px; }
   .card { width: 96px; height: 136px; }

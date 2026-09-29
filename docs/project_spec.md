@@ -5,6 +5,9 @@
 >
 > **Revision 2.1 (2026-09-29).** 1 turn to resurrect / stand up (the minion still returns after 2 days) · no items during a fight, in any round
 > (heal before you roll) · Sand Scorpion General and Demon Lord retuned for fights without healing.
+>
+> **Revision 2.2 (2026-09-29).** After resting, the next turn is a free roll (no join offer, challenge or minion ambush first) ·
+> phone layout fixes: compact day box, space details above the destination box, working D-pad, battle header with the level badge beside the name.
 
 ### 0. General Requirements
 
@@ -64,7 +67,7 @@ the greatest deeds…step forward to receive the King's Blessing!" Then show ran
 
 3.1 Normal Play UI
 
-- Top-left: "Day 5 / 140" box ("Day 5 / ∞" in Endless) and Pause button
+- Top-left: "Day 5 / 140" box ("Day 5 / ∞" in Endless) and Pause button (on phones: a small "DAY" caption over "5 / 140" and an icon-only Pause button)
 - Top-center: the current King's Request with your progress and days left (tap for details)
 - Top-right: active-player panel (level, name, class, rank, stars, money, AT/DF/SP, HP bar), 20 px wider and taller than v1 with larger portrait, text and HP bar.
 Tap the panel or press X to open the Status screen.
@@ -85,7 +88,8 @@ If no route of exactly that length exists (dead end), the turn is skipped.
 - A space's effect occurs only on the space where you stop.
 - Stop on a space occupied by another hero → you may challenge them (except someone locked in battle, resting, or inside a building).
 - Stop on a space where a fight is in progress → you must enter it (§6.4).
-- If you start your turn on a space where a Demon Lord Army battle is in progress → you may choose to join instead of rolling.
+- If you start your turn on a space where a Demon Lord Army battle is in progress → you may choose to join instead of rolling
+(not on your first turn after resting: that turn always goes straight to the roll, §4).
 - If you are locked in an unfinished battle → you do not roll; the battle screen opens immediately.
 - If you are resting (knocked out or gave up, §4) → the turn is skipped.
 
@@ -94,7 +98,8 @@ If no route of exactly that length exists (dead end), the turn is skipped.
 - While moving, hide the UI from 3.1. Every space where the move can end shows a bobbing 🚩 destination flag and blinks; blocking spaces are red.
 Spaces occupied by players or minions, and spaces where the Demon Lord's Head has fallen, show icons above them.
 - Top-left: command panel E Free Camera, I Auto-Move, O Status, N Full Map
-Bottom-left: "3 steps left — you must walk every step"
+Bottom-left: "3 steps left — you must walk every step", with the details of the current / selected space (name, description, who is there) in a box just above it.
+Touch screens also show a D-pad (bottom-right): ▲◀▼▶ walk one space; in Auto-Move ◀/▶ cycle the destinations.
 - Manual movement: W/A/S/D one space at a time. Small arrows only show directions that can still finish exactly on the roll. Pressing the reverse direction cancels a step
 (returning the space). When 0 steps remain (or you step onto a blocking space), the move ends automatically.
 - Auto-Move (always used by bots): press I, then use A/D to cycle the destinations (blinking arrow, space-type label,
@@ -115,6 +120,8 @@ Displayed values include equipment and charms. Decimals are rounded to the neare
 The initial respawn point is the Royal Castle. It can be reset at a temple or the Royal Castle
 (one respawn point at a time; shown as a colored flag on the map).
 - Giving up: HP unchanged, stay on the same space, and **skip the next turn while standing up** (😵). Resting heroes cannot be challenged or ambushed.
+- **Free roll after resting:** on the first turn back (after resurrecting or standing up) the hero always rolls and moves. They are not offered to join a fight
+on their space, and nobody can challenge them and the minion cannot ambush them until that turn ends, even if a fight, another hero or the minion is on the same space.
 - For the holder of the Demon Lord's Head who loses:
     - Loses to another hero (including surrender): the head immediately moves to the winner.
     - HP reaches 0 from a monster or Demon Lord Army: the head drops on that space
@@ -204,7 +211,7 @@ Demon Lord Army fights are co-operative: after the army enemy falls, allies part
 6.5 Battle UI
 
 - Zone-based background; player on the left, enemy on the right, allies in the back row on the left with compact HP bars
-- Top: gold circular level badge, numeric HP bar, name labels for both sides, a burst-star "VS" in the center
+- Top: one box per side with the gold circular level badge beside the name and the numeric HP bar underneath, a burst-star "VS" in the center
 and a "Round 2 / 3" counter. HP bars slide down and turn red below 25%.
 - Center: AT, DF, SP comparison bars (player left, enemy right), and a "Z Info" button to view enemy moves.
 - Starting cards appear below the characters; select with A/D and flip simultaneously.
